@@ -1,1 +1,2264 @@
-X
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tracker - Classic Ledger</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- React & ReactDOM Standalone -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel Compiler -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tone.js for Sound Effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <!-- Google Fonts - Inter & Playfair Display -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        serif: ['"Playfair Display"', 'Georgia', 'serif'],
+                    },
+                    colors: {
+                        classic: {
+                            50: '#F9FAFB',
+                            100: '#F3F4F6',
+                            200: '#E5E7EB',
+                            300: '#D1D5DB',
+                            400: '#9CA3AF',
+                            500: '#6B7280',
+                            600: '#4B5563',
+                            700: '#374151',
+                            800: '#1F2937',
+                            900: '#111827',
+                        },
+                        navy: {
+                            50: '#F0F4F8',
+                            100: '#D9E2EC',
+                            600: '#1B4965',
+                            800: '#0B2545',
+                            900: '#132A13',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #D1D5DB; border-radius: 9999px; }
+        
+        body { 
+            overscroll-behavior-y: none; 
+            background-color: #F3F4F6;
+        }
+
+        .classic-sheet {
+            background-color: #FFFFFF;
+            box-shadow: 0 10px 30px -5px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+        }
+
+        .drawn-checkbox {
+            appearance: none;
+            width: 1.15rem;
+            height: 1.15rem;
+            border: 2px solid #6B7280;
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+            background: transparent;
+            outline: none;
+            transition: all 0.15s ease-in-out;
+        }
+        .drawn-checkbox:checked {
+            border-color: #1B4965;
+            background-color: #1B4965;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+            background-size: 80%;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(6px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .page-fade {
+            animation: fadeIn 0.25s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="antialiased text-classic-800 font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+        
+        // Robust Local Date Parser to avoid UTC timezone off-by-one day bugs
+        const parseLocalDate = (dateVal) => {
+            if (!dateVal) return new Date();
+            if (dateVal instanceof Date) return new Date(dateVal.getFullYear(), dateVal.getMonth(), dateVal.getDate());
+            if (typeof dateVal === 'string' && dateVal.includes('-')) {
+                const parts = dateVal.split('T')[0].split('-');
+                if (parts.length === 3) {
+                    const y = parseInt(parts[0], 10);
+                    const m = parseInt(parts[1], 10) - 1;
+                    const d = parseInt(parts[2], 10);
+                    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+                        return new Date(y, m, d);
+                    }
+                }
+            }
+            return new Date(dateVal);
+        };
+
+        // Date Formatter Helper
+        const format = (date, fmt) => {
+            const d = parseLocalDate(date);
+            if (isNaN(d.getTime())) return '';
+            const yyyy = d.getFullYear();
+            const MM = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            const MMMM = monthNames[d.getMonth()];
+            const MMM = MMMM ? MMMM.substring(0, 3) : '';
+            const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            const EEEE = dayNames[d.getDay()];
+            const nth = (day) => {
+                if (day > 3 && day < 21) return 'th';
+                switch (day % 10) {
+                    case 1: return "st"; case 2: return "nd"; case 3: return "rd"; default: return "th";
+                }
+            };
+            const do_str = d.getDate() + nth(d.getDate());
+
+            if (fmt === 'yyyy-MM-dd') return `${yyyy}-${MM}-${dd}`;
+            if (fmt === 'yyyy-MM') return `${yyyy}-${MM}`;
+            if (fmt === 'd') return String(d.getDate());
+            if (fmt === 'MMMM yyyy') return `${MMMM} ${yyyy}`;
+            if (fmt === 'MMM do, yyyy') return `${MMM} ${do_str}, ${yyyy}`;
+            if (fmt === 'EEEE, MMMM do, yyyy') return `${EEEE}, ${MMMM} ${do_str}, ${yyyy}`;
+            if (fmt === 'do') return do_str;
+            return d.toString();
+        };
+
+        const startOfMonth = (date) => {
+            const d = parseLocalDate(date);
+            return new Date(d.getFullYear(), d.getMonth(), 1);
+        };
+        const endOfMonth = (date) => {
+            const d = parseLocalDate(date);
+            return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        };
+        
+        const eachDayOfInterval = ({ start, end }) => {
+            const arr = [];
+            let dt = parseLocalDate(start);
+            const stop = parseLocalDate(end);
+            while (dt <= stop) {
+                arr.push(new Date(dt));
+                dt.setDate(dt.getDate() + 1);
+            }
+            return arr;
+        };
+        
+        const isSameDay = (d1, d2) => {
+            const a = parseLocalDate(d1); 
+            const b = parseLocalDate(d2);
+            return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+        };
+        
+        const addMonths = (date, amount) => {
+            const d = parseLocalDate(date); 
+            d.setMonth(d.getMonth() + amount); 
+            return d;
+        };
+        
+        const subMonths = (date, amount) => {
+            const d = parseLocalDate(date); 
+            d.setMonth(d.getMonth() - amount); 
+            return d;
+        };
+        
+        const getDay = (date) => parseLocalDate(date).getDay();
+        const startOfDay = (date) => {
+            const d = parseLocalDate(date);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        };
+        
+        const differenceInDays = (d1, d2) => {
+            const t1 = startOfDay(d1).getTime();
+            const t2 = startOfDay(d2).getTime();
+            return Math.round((t1 - t2) / (1000 * 60 * 60 * 24));
+        };
+
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+
+        const App = () => {
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [selectedDate, setSelectedDate] = useState(new Date());
+            
+            const [tasks, setTasks] = useState([]);
+            const [reminders, setReminders] = useState([]);
+            const [expenses, setExpenses] = useState([]);
+            const [goals, setGoals] = useState([]);
+            const [bills, setBills] = useState([]);
+
+            // Incomes & Transfers States
+            const [incomes, setIncomes] = useState([]);
+            const [transfers, setTransfers] = useState([]);
+
+            // Stocks & Loans States
+            const [stocks, setStocks] = useState([]);
+            const [loans, setLoans] = useState([]);
+
+            // Savings State
+            const [savingsList, setSavingsList] = useState([]);
+
+            // Wedding Analysis (13 Feb) State
+            const [weddingData, setWeddingData] = useState({
+                required: '',
+                loan: '',
+                other: ''
+            });
+
+            // Bank Accounts State (HDFC Bank, IDFC Bank, IndusInd Bank, Cash)
+            const defaultAccounts = [
+                { id: 'hdfc', name: 'HDFC Bank', openingBalance: 0, openingDate: format(new Date(), 'yyyy-MM-dd') },
+                { id: 'idfc', name: 'IDFC Bank', openingBalance: 0, openingDate: format(new Date(), 'yyyy-MM-dd') },
+                { id: 'indus', name: 'IndusInd Bank', openingBalance: 0, openingDate: format(new Date(), 'yyyy-MM-dd') },
+                { id: 'cash', name: 'Cash', openingBalance: 0, openingDate: format(new Date(), 'yyyy-MM-dd') },
+            ];
+            const [accounts, setAccounts] = useState(defaultAccounts);
+
+            // Debtors & Creditors State
+            const [debtorsCreditors, setDebtorsCreditors] = useState([]);
+
+            const [activeTab, setActiveTab] = useState('expenses'); // expenses, balance, debtors, loans, stocks, budget, savings, wedding, goals, data
+            const [budgetMap, setBudgetMap] = useState({}); 
+            const [excludedIds, setExcludedIds] = useState([]);
+            const [dataMonthFilter, setDataMonthFilter] = useState('all');
+
+            // Heatmap Sliders State
+            const [heatmapMin, setHeatmapMin] = useState(300);
+            const [heatmapMax, setHeatmapMax] = useState(5000);
+
+            // Modal Controls
+            const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+            const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+            const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+            const [isBillModalOpen, setIsBillModalOpen] = useState(false);
+            const [isEditBillModalOpen, setIsEditBillModalOpen] = useState(false);
+            const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+            const [isDebtorCreditorModalOpen, setIsDebtorCreditorModalOpen] = useState(false);
+            const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
+            const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+            const [isStockModalOpen, setIsStockModalOpen] = useState(false);
+            const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
+            const [isSavingsModalOpen, setIsSavingsModalOpen] = useState(false);
+            const [gearAccountModal, setGearAccountModal] = useState(null);
+
+            // Form Data States
+            const [newTask, setNewTask] = useState({ title: '', type: 'one-time' });
+            const [newReminder, setNewReminder] = useState({ text: '', type: 'one-time' });
+            const [newExpense, setNewExpense] = useState({ amount: '', description: '', accountId: 'hdfc' });
+            const [newBill, setNewBill] = useState({ title: '', amount: '', type: 'one-time', accountId: 'hdfc' });
+            const [editingBill, setEditingBill] = useState(null);
+            const [newGoal, setNewGoal] = useState({ title: '', targetDate: format(new Date(), 'yyyy-MM-dd') });
+            const [newDC, setNewDC] = useState({ name: '', amount: '', type: 'debtor', note: '', dueDate: format(new Date(), 'yyyy-MM-dd') });
+            const [newIncome, setNewIncome] = useState({ source: '', amount: '', accountId: 'hdfc', date: format(new Date(), 'yyyy-MM-dd') });
+            const [newTransfer, setNewTransfer] = useState({ amount: '', fromAccountId: 'idfc', toAccountId: 'hdfc', note: '' });
+            const [newStock, setNewStock] = useState({ name: '', valuation: '', note: '' });
+            const [newLoan, setNewLoan] = useState({ name: '', amount: '', loanType: 'bank', bankName: '', emi: '', note: '' });
+            const [newSavings, setNewSavings] = useState({ name: '', amount: '', category: 'Bank FD / Deposit', note: '' });
+
+            const [isSyncing, setIsSyncing] = useState(false);
+            const [syncError, setSyncError] = useState(false);
+            const [isTriggeringAlerts, setIsTriggeringAlerts] = useState(false);
+            const [alertNotice, setAlertNotice] = useState(null);
+
+            const synthRef = useRef(null);
+            
+            const DAILY_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby-koILijAnRHIMZkEQI97_SUOmVIgK9RWBQmLzH6PxWV6bfWJdjiewg0K91duENAil/exec';
+            const FETCH_ALERTS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx5yEPu9w-QRYLGhalxMsnBBF6UVq03hjgU84iXyZ2YCLRiQq6oqTrHXjC5Qw_ZZYCn/exec';
+
+            const initAudio = () => {
+                if (!synthRef.current && window.Tone) {
+                    synthRef.current = new Tone.MembraneSynth({
+                        pitchDecay: 0.01,
+                        octaves: 1.2,
+                        oscillator: { type: "sine" },
+                        envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.08 }
+                    }).toDestination();
+                    Tone.start();
+                }
+            };
+
+            const playClickSound = () => {
+                initAudio();
+                if (synthRef.current) synthRef.current.triggerAttackRelease("D2", "32n", "+0", 0.2);
+            };
+
+            const playPageFlipSound = () => {
+                initAudio();
+                if (synthRef.current) synthRef.current.triggerAttackRelease("F2", "16n", "+0", 0.1);
+            };
+
+            const triggerFetchBankAlerts = async () => {
+                playClickSound();
+                setIsTriggeringAlerts(true);
+                setAlertNotice("Syncing live bank alerts...");
+                try {
+                    await fetch(FETCH_ALERTS_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'fetchBankAlerts' })
+                    });
+                    setAlertNotice("Data updated successfully.");
+                    setTimeout(() => window.location.reload(), 2000);
+                } catch (err) {
+                    setAlertNotice("Sync notice: Local mode active.");
+                    setTimeout(() => setAlertNotice(null), 3000);
+                } finally {
+                    setIsTriggeringAlerts(false);
+                }
+            };
+
+            const dateStr = (date) => format(date, 'yyyy-MM-dd');
+            const selectedDateStr = dateStr(selectedDate);
+
+            useEffect(() => {
+                const load = (key, setter) => {
+                    const data = localStorage.getItem(`tracker_${key}`);
+                    if (data) setter(JSON.parse(data));
+                };
+                load('tasks', setTasks);
+                load('reminders', setReminders);
+                load('expenses', setExpenses);
+                load('budgetMap', setBudgetMap);
+                load('bills', setBills);
+                load('goals', setGoals);
+                load('accounts', setAccounts);
+                load('debtorsCreditors', setDebtorsCreditors);
+                load('excludedIds', setExcludedIds);
+                load('heatmapMin', setHeatmapMin);
+                load('heatmapMax', setHeatmapMax);
+                load('incomes', setIncomes);
+                load('transfers', setTransfers);
+                load('stocks', setStocks);
+                load('loans', setLoans);
+                load('savingsList', setSavingsList);
+                load('weddingData', setWeddingData);
+
+                const fetchSheetData = async () => {
+                    setIsSyncing(true);
+                    setSyncError(false);
+                    try {
+                        const [dailyRes] = await Promise.allSettled([
+                            fetch(DAILY_SCRIPT_URL, { method: 'GET', redirect: 'follow' })
+                        ]);
+                        if (dailyRes.status === 'fulfilled' && dailyRes.value.ok) {
+                            const text = await dailyRes.value.text();
+                            try {
+                                const data = JSON.parse(text);
+                                if (data.expenses) setExpenses(data.expenses);
+                                if (data.tasks) setTasks(data.tasks);
+                                if (data.goals) setGoals(data.goals);
+                            } catch (e) {}
+                        }
+                    } catch (error) {
+                        setSyncError(true);
+                    } finally {
+                        setIsSyncing(false);
+                    }
+                };
+                fetchSheetData();
+            }, []);
+
+            useEffect(() => {
+                const save = (key, data) => localStorage.setItem(`tracker_${key}`, JSON.stringify(data));
+                save('tasks', tasks);
+                save('reminders', reminders);
+                save('expenses', expenses);
+                save('budgetMap', budgetMap);
+                save('bills', bills);
+                save('goals', goals);
+                save('accounts', accounts);
+                save('debtorsCreditors', debtorsCreditors);
+                save('excludedIds', excludedIds);
+                save('heatmapMin', heatmapMin);
+                save('heatmapMax', heatmapMax);
+                save('incomes', incomes);
+                save('transfers', transfers);
+                save('stocks', stocks);
+                save('loans', loans);
+                save('savingsList', savingsList);
+                save('weddingData', weddingData);
+            }, [tasks, reminders, expenses, budgetMap, bills, goals, accounts, debtorsCreditors, excludedIds, heatmapMin, heatmapMax, incomes, transfers, stocks, loans, savingsList, weddingData]);
+
+            const toggleExclusion = (id) => {
+                playClickSound();
+                setExcludedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+            };
+
+            const activeExpenses = useMemo(() => expenses.filter(e => !excludedIds.includes(e.id)), [expenses, excludedIds]);
+            const activeBills = useMemo(() => bills.filter(b => !excludedIds.includes(b.id)), [bills, excludedIds]);
+            const activeTasks = useMemo(() => tasks.filter(t => !excludedIds.includes(t.id)), [tasks, excludedIds]);
+
+            const availableMonths = useMemo(() => {
+                const monthsSet = new Set();
+                expenses.forEach(e => { if (e.date && e.date.length >= 7) monthsSet.add(e.date.substring(0, 7)); });
+                bills.forEach(b => { if (b.date && b.date.length >= 7) monthsSet.add(b.date.substring(0, 7)); });
+                monthsSet.add(format(new Date(), 'yyyy-MM'));
+                return Array.from(monthsSet).sort().reverse();
+            }, [expenses, bills]);
+
+            const selectedDateTasks = useMemo(() => {
+                const targetDate = startOfDay(selectedDate);
+                return activeTasks.map(task => {
+                    const taskStartDate = startOfDay(task.date);
+                    const isRelevant = (task.type === 'one-time' && task.date === selectedDateStr) || (task.type === 'recurring' && taskStartDate <= targetDate);
+                    if (!isRelevant) return null;
+                    let isCompletedOnDate = task.type === 'one-time' ? task.completed : (task.completedDates ? task.completedDates.includes(selectedDateStr) : false);
+                    return { ...task, isCompletedOnDate };
+                }).filter(Boolean);
+            }, [activeTasks, selectedDate, selectedDateStr]);
+
+            const selectedDateReminders = useMemo(() => {
+                const targetDate = startOfDay(selectedDate);
+                return reminders.filter(reminder => {
+                    const reminderStartDate = startOfDay(reminder.date);
+                    if (reminder.type === 'one-time') return reminder.date === selectedDateStr;
+                    if (reminder.type === 'recurring') return reminderStartDate <= targetDate;
+                    return false;
+                });
+            }, [reminders, selectedDate, selectedDateStr]);
+
+            const totalTasks = selectedDateTasks.length;
+            const completedTasks = selectedDateTasks.filter(t => t.isCompletedOnDate).length;
+            const taskProgress = totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
+
+            const todayExpenses = activeExpenses.filter(e => e.date === selectedDateStr);
+            const todaySpend = todayExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+            const monthKey = format(selectedDate, 'yyyy-MM');
+            const monthExpenses = activeExpenses.filter(e => e.date && e.date.startsWith(monthKey));
+            const monthlySpend = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+            const currentBudget = budgetMap[monthKey] || '';
+
+            const monthlyBills = useMemo(() => {
+                const targetMonthEnd = endOfMonth(selectedDate);
+                return activeBills.map(bill => {
+                    if (!bill.date) return null;
+                    const billStartDate = startOfDay(bill.date);
+                    if (isNaN(billStartDate.getTime())) return null;
+                    const isRelevant = (bill.type === 'one-time' && format(billStartDate, 'yyyy-MM') === monthKey) || (bill.type === 'recurring' && billStartDate <= targetMonthEnd);
+                    if (!isRelevant) return null;
+                    const isPaidForMonth = bill.paidMonths ? bill.paidMonths.includes(monthKey) : false;
+                    return { ...bill, isPaidForMonth };
+                }).filter(Boolean);
+            }, [activeBills, selectedDate, monthKey]);
+
+            const totalScheduledBills = monthlyBills.reduce((sum, b) => sum + Number(b.amount), 0);
+            const totalPaidBills = monthlyBills.filter(b => b.isPaidForMonth).reduce((sum, b) => sum + Number(b.amount), 0);
+            const totalUnpaidBills = monthlyBills.filter(b => !b.isPaidForMonth).reduce((sum, b) => sum + Number(b.amount), 0);
+            const remainingBudget = Number(currentBudget) ? Number(currentBudget) - totalScheduledBills : 0;
+
+            const selectedDateBills = useMemo(() => {
+                const targetDay = startOfDay(selectedDate);
+                return monthlyBills.filter(bill => {
+                    if (!bill.date) return false;
+                    const billDate = startOfDay(bill.date);
+                    if (isNaN(billDate.getTime())) return false;
+                    if (bill.type === 'one-time') {
+                        return bill.date === selectedDateStr;
+                    } else if (bill.type === 'recurring') {
+                        return billDate <= targetDay && parseLocalDate(bill.date).getDate() === selectedDate.getDate();
+                    }
+                    return false;
+                });
+            }, [monthlyBills, selectedDate, selectedDateStr]);
+
+            const selectedDateBillTotal = selectedDateBills.reduce((sum, b) => sum + Number(b.amount), 0);
+
+            const accountSummaries = useMemo(() => {
+                return accounts.map(acc => {
+                    const openDate = startOfDay(acc.openingDate || new Date());
+                    
+                    const totalIncomes = incomes
+                        .filter(i => (i.accountId || 'hdfc') === acc.id)
+                        .reduce((sum, i) => sum + Number(i.amount), 0);
+
+                    const totalTransfersIn = transfers
+                        .filter(t => t.toAccountId === acc.id)
+                        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+                    const totalTransfersOut = transfers
+                        .filter(t => t.fromAccountId === acc.id)
+                        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+                    const accExpenses = activeExpenses.filter(e => {
+                        const expAcc = e.accountId || 'hdfc';
+                        const expDate = startOfDay(e.date);
+                        return expAcc === acc.id && expDate >= openDate;
+                    });
+                    const totalDeductedExpenses = accExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+                    const accPaidBills = activeBills.filter(b => {
+                        const billAcc = b.accountId || 'hdfc';
+                        const billDate = startOfDay(b.date);
+                        return billAcc === acc.id && billDate >= openDate;
+                    }).reduce((sum, b) => {
+                        const paidCount = (b.paidMonths || []).length;
+                        return sum + (Number(b.amount) * paidCount);
+                    }, 0);
+
+                    const currentBalance = Number(acc.openingBalance || 0) + totalIncomes + totalTransfersIn - totalTransfersOut - totalDeductedExpenses - accPaidBills;
+                    const upcomingBills = monthlyBills.filter(b => !b.isPaidForMonth && (b.accountId || 'hdfc') === acc.id)
+                        .reduce((sum, b) => sum + Number(b.amount), 0);
+                    const projectedBalance = currentBalance - upcomingBills;
+
+                    return {
+                        ...acc,
+                        totalIncomes,
+                        totalTransfersIn,
+                        totalTransfersOut,
+                        totalDeductedExpenses,
+                        totalPaidBills: accPaidBills,
+                        currentBalance,
+                        upcomingBills,
+                        projectedBalance
+                    };
+                });
+            }, [accounts, incomes, transfers, activeExpenses, activeBills, monthlyBills]);
+
+            const totalBankBalance = accountSummaries.reduce((sum, a) => sum + a.currentBalance, 0);
+
+            const totalStockValuation = useMemo(() => {
+                return stocks.reduce((sum, s) => sum + Number(s.valuation || 0), 0);
+            }, [stocks]);
+
+            const totalSavingsValuation = useMemo(() => {
+                return savingsList.reduce((sum, s) => sum + Number(s.amount || 0), 0);
+            }, [savingsList]);
+
+            const bankLoanTotal = useMemo(() => {
+                return loans.filter(l => l.loanType === 'bank').reduce((sum, l) => sum + Number(l.amount || 0), 0);
+            }, [loans]);
+
+            const creditCardTotal = useMemo(() => {
+                return loans.filter(l => l.loanType === 'credit_card').reduce((sum, l) => sum + Number(l.amount || 0), 0);
+            }, [loans]);
+
+            const totalInstitutionalLoans = bankLoanTotal + creditCardTotal;
+
+            const debtorTotal = useMemo(() => {
+                return debtorsCreditors.filter(i => i.type === 'debtor' && !i.settled).reduce((sum, i) => sum + Number(i.amount), 0);
+            }, [debtorsCreditors]);
+
+            const creditorTotal = useMemo(() => {
+                return debtorsCreditors.filter(i => i.type === 'creditor' && !i.settled).reduce((sum, i) => sum + Number(i.amount), 0);
+            }, [debtorsCreditors]);
+
+            // Wedding Analysis Calculations
+            const weddingReqNum = Number(weddingData.required) || 0;
+            const weddingLoanNum = Number(weddingData.loan) || 0;
+            const weddingOtherNum = Number(weddingData.other) || 0;
+            
+            const weddingSavingsNum = totalSavingsValuation;
+            const weddingStocksNum = totalStockValuation;
+            
+            const weddingTotalArranged = weddingSavingsNum + weddingStocksNum + weddingLoanNum + weddingOtherNum;
+            const weddingRemaining = weddingReqNum - weddingTotalArranged;
+            const weddingProgress = weddingReqNum > 0 ? Math.min(100, Math.round((weddingTotalArranged / weddingReqNum) * 100)) : 0;
+
+            const handleTabClick = (tabId) => {
+                playPageFlipSound();
+                setActiveTab(tabId);
+            };
+
+            const nextMonth = () => { playPageFlipSound(); setCurrentDate(addMonths(currentDate, 1)); };
+            const prevMonth = () => { playPageFlipSound(); setCurrentDate(subMonths(currentDate, 1)); };
+            const onDateClick = (day) => { playPageFlipSound(); setSelectedDate(day); };
+
+            const handleUpdateOpeningBalance = (accId, val, dtVal) => {
+                playClickSound();
+                setAccounts(accounts.map(a => a.id === accId ? { ...a, openingBalance: parseFloat(val) || 0, openingDate: dtVal } : a));
+                setGearAccountModal(null);
+            };
+
+            const handleAddSavings = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newSavings.name.trim() || !newSavings.amount) return;
+                setSavingsList([...savingsList, {
+                    id: generateId(),
+                    name: newSavings.name,
+                    amount: parseFloat(newSavings.amount),
+                    category: newSavings.category || 'Bank FD / Deposit',
+                    note: newSavings.note,
+                    date: format(new Date(), 'yyyy-MM-dd')
+                }]);
+                setNewSavings({ name: '', amount: '', category: 'Bank FD / Deposit', note: '' });
+                setIsSavingsModalOpen(false);
+            };
+            const deleteSavings = (id) => { playClickSound(); setSavingsList(savingsList.filter(s => s.id !== id)); };
+
+            const handleAddTask = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newTask.title.trim()) return;
+                setTasks([...tasks, { id: generateId(), title: newTask.title, type: newTask.type, date: selectedDateStr, completed: false, completedDates: [] }]);
+                setNewTask({ title: '', type: 'one-time' });
+                setIsTaskModalOpen(false);
+            };
+
+            const toggleTaskCompletion = (taskId, taskType) => {
+                playClickSound();
+                setTasks(tasks.map(task => {
+                    if (task.id === taskId) {
+                        if (taskType === 'one-time') return { ...task, completed: !task.completed };
+                        const completedDates = task.completedDates || [];
+                        const isCurrentlyCompleted = completedDates.includes(selectedDateStr);
+                        return { ...task, completedDates: isCurrentlyCompleted ? completedDates.filter(d => d !== selectedDateStr) : [...completedDates, selectedDateStr] };
+                    }
+                    return task;
+                }));
+            };
+            const deleteTask = (taskId) => { playClickSound(); setTasks(tasks.filter(t => t.id !== taskId)); };
+
+            const handleAddReminder = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newReminder.text.trim()) return;
+                setReminders([...reminders, { id: generateId(), text: newReminder.text, type: newReminder.type, date: selectedDateStr }]);
+                setNewReminder({ text: '', type: 'one-time' });
+                setIsReminderModalOpen(false);
+            };
+            const deleteReminder = (reminderId) => { playClickSound(); setReminders(reminders.filter(r => r.id !== reminderId)); };
+
+            const handleAddExpense = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newExpense.amount || !newExpense.description.trim()) return;
+                setExpenses([...expenses, { 
+                    id: generateId(), 
+                    amount: parseFloat(newExpense.amount), 
+                    description: newExpense.description, 
+                    accountId: newExpense.accountId || 'hdfc',
+                    date: selectedDateStr 
+                }]);
+                setNewExpense({ amount: '', description: '', accountId: 'hdfc' });
+                setIsExpenseModalOpen(false);
+            };
+            const deleteExpense = (expenseId) => { playClickSound(); setExpenses(expenses.filter(e => e.id !== expenseId)); };
+
+            const handleBudgetChange = (e) => setBudgetMap({ ...budgetMap, [monthKey]: e.target.value });
+
+            const handleAddBill = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newBill.title.trim() || !newBill.amount) return;
+                setBills([...bills, { 
+                    id: generateId(), 
+                    title: newBill.title, 
+                    amount: parseFloat(newBill.amount), 
+                    type: newBill.type, 
+                    accountId: newBill.accountId || 'hdfc', 
+                    date: selectedDateStr,
+                    paidMonths: [] 
+                }]);
+                setNewBill({ title: '', amount: '', type: 'one-time', accountId: 'hdfc' });
+                setIsBillModalOpen(false);
+            };
+
+            const handleOpenEditBill = (bill) => {
+                playClickSound();
+                setEditingBill({
+                    ...bill,
+                    date: bill.date || selectedDateStr,
+                    accountId: bill.accountId || 'hdfc'
+                });
+                setIsEditBillModalOpen(true);
+            };
+
+            const handleUpdateBill = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!editingBill || !editingBill.title.trim() || !editingBill.amount) return;
+                
+                setBills(bills.map(b => b.id === editingBill.id ? {
+                    ...b,
+                    title: editingBill.title,
+                    amount: parseFloat(editingBill.amount),
+                    type: editingBill.type,
+                    date: editingBill.date,
+                    accountId: editingBill.accountId || 'hdfc'
+                } : b));
+                
+                setEditingBill(null);
+                setIsEditBillModalOpen(false);
+            };
+
+            const toggleBillPayment = (billId) => {
+                playClickSound();
+                setBills(bills.map(bill => {
+                    if (bill.id === billId) {
+                        const paidMonths = bill.paidMonths || [];
+                        const isCurrentlyPaid = paidMonths.includes(monthKey);
+                        return { ...bill, paidMonths: isCurrentlyPaid ? paidMonths.filter(m => m !== monthKey) : [...paidMonths, monthKey] };
+                    }
+                    return bill;
+                }));
+            };
+            const deleteBill = (billId) => { playClickSound(); setBills(bills.filter(b => b.id !== billId)); };
+
+            const handleAddGoal = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newGoal.title.trim() || !newGoal.targetDate) return;
+                setGoals([...goals, { id: generateId(), title: newGoal.title, targetDate: newGoal.targetDate, completed: false }]);
+                setNewGoal({ title: '', targetDate: format(new Date(), 'yyyy-MM-dd') });
+                setIsGoalModalOpen(false);
+            };
+            const toggleGoalCompletion = (goalId) => { playClickSound(); setGoals(goals.map(g => g.id === goalId ? { ...g, completed: !g.completed } : g)); };
+            const deleteGoal = (goalId) => { playClickSound(); setGoals(goals.filter(g => g.id !== goalId)); };
+
+            const handleAddDC = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newDC.name.trim() || !newDC.amount) return;
+                setDebtorsCreditors([...debtorsCreditors, {
+                    id: generateId(),
+                    name: newDC.name,
+                    amount: parseFloat(newDC.amount),
+                    type: newDC.type,
+                    note: newDC.note,
+                    dueDate: newDC.dueDate,
+                    settled: false
+                }]);
+                setNewDC({ name: '', amount: '', type: 'debtor', note: '', dueDate: format(new Date(), 'yyyy-MM-dd') });
+                setIsDebtorCreditorModalOpen(false);
+            };
+
+            const toggleDCSettled = (id) => {
+                playClickSound();
+                setDebtorsCreditors(prev => prev.map(item => item.id === id ? { ...item, settled: !item.settled } : item));
+            };
+            const deleteDC = (id) => { playClickSound(); setDebtorsCreditors(prev => prev.filter(item => item.id !== id)); };
+
+            const handleAddIncome = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newIncome.source.trim() || !newIncome.amount) return;
+                setIncomes([...incomes, {
+                    id: generateId(),
+                    source: newIncome.source,
+                    amount: parseFloat(newIncome.amount),
+                    accountId: newIncome.accountId || 'hdfc',
+                    date: newIncome.date || format(new Date(), 'yyyy-MM-dd')
+                }]);
+                setNewIncome({ source: '', amount: '', accountId: 'hdfc', date: format(new Date(), 'yyyy-MM-dd') });
+                setIsIncomeModalOpen(false);
+            };
+            const deleteIncome = (id) => { playClickSound(); setIncomes(incomes.filter(i => i.id !== id)); };
+
+            const handleAddTransfer = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newTransfer.amount || newTransfer.fromAccountId === newTransfer.toAccountId) return;
+                setTransfers([...transfers, {
+                    id: generateId(),
+                    amount: parseFloat(newTransfer.amount),
+                    fromAccountId: newTransfer.fromAccountId,
+                    toAccountId: newTransfer.toAccountId,
+                    note: newTransfer.note,
+                    date: format(new Date(), 'yyyy-MM-dd')
+                }]);
+                setNewTransfer({ amount: '', fromAccountId: 'idfc', toAccountId: 'hdfc', note: '' });
+                setIsTransferModalOpen(false);
+            };
+
+            const handleAddStock = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newStock.name.trim() || !newStock.valuation) return;
+                setStocks([...stocks, {
+                    id: generateId(),
+                    name: newStock.name,
+                    valuation: parseFloat(newStock.valuation),
+                    note: newStock.note
+                }]);
+                setNewStock({ name: '', valuation: '', note: '' });
+                setIsStockModalOpen(false);
+            };
+            const deleteStock = (id) => { playClickSound(); setStocks(stocks.filter(s => s.id !== id)); };
+
+            const handleAddLoan = (e) => {
+                e.preventDefault();
+                playClickSound();
+                if (!newLoan.name.trim() || !newLoan.amount) return;
+                setLoans([...loans, {
+                    id: generateId(),
+                    name: newLoan.name,
+                    amount: parseFloat(newLoan.amount),
+                    loanType: newLoan.loanType || 'bank',
+                    bankName: newLoan.bankName,
+                    emi: newLoan.emi ? parseFloat(newLoan.emi) : 0,
+                    note: newLoan.note
+                }]);
+                setNewLoan({ name: '', amount: '', loanType: 'bank', bankName: '', emi: '', note: '' });
+                setIsLoanModalOpen(false);
+            };
+            const deleteLoan = (id) => { playClickSound(); setLoans(loans.filter(l => l.id !== id)); };
+
+            const monthStart = startOfMonth(currentDate);
+            const monthEnd = endOfMonth(monthStart);
+            const calendarDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+            const startDayIndex = getDay(monthStart); 
+            
+            const paddingDays = Array.from({ length: startDayIndex }).map((_, i) => (
+                <div key={`pad-${i}`} className="p-1 h-14 border-b border-r border-classic-200 bg-classic-50/50"></div>
+            ));
+
+            const getConditionalFormattingClass = (spend) => {
+                if (spend <= 0) return 'bg-white hover:bg-classic-100 text-classic-800';
+                
+                const minVal = Math.max(1, Number(heatmapMin) || 100);
+                const maxVal = Math.max(minVal + 10, Number(heatmapMax) || 5000);
+                const step = (maxVal - minVal) / 5;
+
+                if (spend < minVal) return 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'; 
+                if (spend < minVal + step * 1) return 'bg-lime-50 text-lime-900 border-lime-200 hover:bg-lime-100';      
+                if (spend < minVal + step * 2) return 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100';   
+                if (spend < minVal + step * 3) return 'bg-orange-100 text-orange-950 border-orange-300 hover:bg-orange-200';
+                if (spend < maxVal) return 'bg-red-100 text-red-950 border-red-300 hover:bg-red-200';        
+                return 'bg-red-200 font-semibold text-red-950 border-red-400 hover:bg-red-300';              
+            };
+
+            const dayCells = calendarDays.map((day) => {
+                const isSelected = isSameDay(day, selectedDate);
+                const isToday = isSameDay(day, new Date());
+                const dayDateString = dateStr(day);
+                
+                const checkItems = (items) => items.some(item => {
+                    const itemDate = startOfDay(item.date);
+                    const d = startOfDay(day);
+                    return (item.type === 'one-time' && item.date === dayDateString) || (item.type === 'recurring' && itemDate <= d);
+                });
+                
+                const hasTasksOrReminders = checkItems(activeTasks) || checkItems(reminders);
+                
+                let dayCalendarAmount = 0;
+                let dayItemsList = [];
+
+                if (activeTab === 'budget') {
+                    const targetDay = startOfDay(day);
+                    
+                    const matchingBills = activeBills.filter(bill => {
+                        if (!bill.date) return false;
+                        const billDate = startOfDay(bill.date);
+                        if (isNaN(billDate.getTime())) return false;
+
+                        if (bill.type === 'one-time') {
+                            return bill.date === dayDateString;
+                        } else if (bill.type === 'recurring') {
+                            return billDate <= targetDay && parseLocalDate(bill.date).getDate() === day.getDate();
+                        }
+                        return false;
+                    });
+
+                    dayCalendarAmount = matchingBills.reduce((sum, bill) => sum + Number(bill.amount), 0);
+                    dayItemsList = matchingBills.map(b => b.title);
+                } else {
+                    const matchingExpenses = activeExpenses.filter(e => e.date === dayDateString);
+                    dayCalendarAmount = matchingExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+                    dayItemsList = [];
+                }
+
+                const colorClass = getConditionalFormattingClass(dayCalendarAmount);
+
+                return (
+                    <div 
+                        key={day.toString()} 
+                        onClick={() => onDateClick(day)}
+                        className={`p-1 min-h-[4.2rem] sm:min-h-[5rem] flex flex-col justify-between cursor-pointer transition-all relative border-b border-r border-classic-200 ${colorClass} ${isSelected ? 'ring-2 ring-navy-600 ring-inset shadow-sm font-bold z-10' : ''}`}
+                    >
+                        <div className="flex justify-between items-start">
+                            <span className={`text-xs pl-0.5 font-sans ${isToday ? 'bg-navy-600 text-white rounded px-1 font-bold' : (isSelected ? 'text-navy-800 font-bold' : 'text-classic-700')}`}>
+                                {format(day, "d")}
+                            </span>
+                            
+                            {hasTasksOrReminders && (
+                                <span className="w-2 h-2 rounded-full bg-navy-600 inline-block mr-0.5 mt-0.5" title="Tasks/Reminders Due"></span>
+                            )}
+                        </div>
+                        
+                        {/* Transaction Names inside Date Tiles (Budget tab only) */}
+                        {activeTab === 'budget' && dayItemsList.length > 0 && (
+                            <div className="my-0.5 overflow-hidden text-[9px] sm:text-[10px] leading-tight space-y-0.5">
+                                {dayItemsList.slice(0, 2).map((name, idx) => (
+                                    <div key={idx} className="truncate text-classic-800 font-normal px-0.5 bg-white/50 rounded">
+                                        {name}
+                                    </div>
+                                ))}
+                                {dayItemsList.length > 2 && (
+                                    <div className="text-[8px] text-classic-500 font-semibold px-0.5">
+                                        +{dayItemsList.length - 2} more
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {dayCalendarAmount > 0 && (
+                            <div className="text-right px-0.5 pb-0.5 mt-auto">
+                                <span className="text-[10px] sm:text-[11px] font-bold text-classic-900 leading-none block truncate">
+                                    ₹{dayCalendarAmount.toFixed(0)}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                );
+            });
+
+            const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, i) => (
+                <div key={i} className="text-center font-semibold text-[10px] text-classic-600 uppercase py-1.5 border-b border-classic-200 bg-classic-100">
+                    {day}
+                </div>
+            ));
+
+            return (
+                <div className="min-h-screen py-4 md:py-6 px-2 sm:px-4 md:px-8 flex justify-center">
+                    <div className="w-full max-w-6xl classic-sheet p-4 sm:p-6 md:p-10 rounded-xl border border-classic-200 relative overflow-hidden" onClick={() => initAudio()}>
+                        
+                        {/* Header Title */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 border-b border-classic-200 pb-4">
+                            <div>
+                                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-classic-900 tracking-tight font-serif">
+                                    Personal Journal & Ledger
+                                </h1>
+                                <p className="text-xs sm:text-sm text-classic-500 font-sans mt-0.5">
+                                    Selected Date: <span className="font-semibold text-navy-800">{format(selectedDate, 'EEEE, MMMM do, yyyy')}</span>
+                                </p>
+                            </div>
+                            
+                            <div className="flex items-center space-x-3 self-end sm:self-auto">
+                                {isSyncing ? (
+                                    <span className="text-xs text-classic-500 italic"><i className="fas fa-spinner fa-spin mr-1"></i> Syncing...</span>
+                                ) : (
+                                    <button 
+                                        onClick={triggerFetchBankAlerts}
+                                        disabled={isTriggeringAlerts}
+                                        className="text-xs font-medium text-classic-700 hover:text-navy-600 bg-classic-100 hover:bg-classic-200 px-3 py-1.5 rounded-md transition-colors border border-classic-300"
+                                    >
+                                        <i className={`fas fa-sync-alt mr-1.5 ${isTriggeringAlerts ? 'fa-spin' : ''}`}></i>
+                                        {isTriggeringAlerts ? 'Updating...' : 'Sync Data'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {alertNotice && <p className="text-sm font-medium text-navy-600 mb-4 animate-pulse bg-navy-50 p-2 rounded border border-navy-100">{alertNotice}</p>}
+
+                        {/* Mobile Friendly Scrollable Navigation Tabs */}
+                        <div className="flex overflow-x-auto custom-scrollbar gap-2 w-full mb-6 border-b border-classic-200 pb-2 whitespace-nowrap">
+                            {[
+                                { id: 'expenses', label: 'Expenses', icon: 'fa-calendar-day' },
+                                { id: 'balance', label: 'Bank Balance', icon: 'fa-wallet' },
+                                { id: 'debtors', label: 'Debtors & Creditors', icon: 'fa-hand-holding-usd' },
+                                { id: 'loans', label: 'Loans & CC', icon: 'fa-university' },
+                                { id: 'stocks', label: 'Stock Portfolio', icon: 'fa-chart-line' },
+                                { id: 'budget', label: 'Budget Ledger', icon: 'fa-chart-pie' },
+                                { id: 'savings', label: 'Savings', icon: 'fa-piggy-bank' },
+                                { id: 'wedding', label: '13 Feb', icon: 'fa-ring' },
+                                { id: 'goals', label: 'Goals', icon: 'fa-bullseye' },
+                                { id: 'data', label: 'Master Data', icon: 'fa-database' }
+                            ].map(tab => (
+                                <button 
+                                    key={tab.id}
+                                    onClick={() => handleTabClick(tab.id)}
+                                    className={`
+                                        px-3.5 py-2 font-sans text-xs sm:text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 flex-shrink-0
+                                        ${activeTab === tab.id 
+                                            ? 'bg-navy-800 text-white shadow-sm font-semibold' 
+                                            : 'bg-classic-100 text-classic-700 hover:bg-classic-200'}
+                                    `}
+                                >
+                                    <i className={`fas ${tab.icon} text-xs`}></i> {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Calendar Widget with Min/Max Sliders */}
+                        {['expenses', 'budget'].includes(activeTab) && (
+                            <div className="mb-8 border border-classic-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                                <div className="flex justify-between items-center px-4 py-2.5 bg-classic-100 border-b border-classic-200">
+                                    <h2 className="font-serif font-bold text-base text-classic-900">
+                                        {format(currentDate, 'MMMM yyyy')}
+                                    </h2>
+                                    <div className="flex space-x-1">
+                                        <button onClick={prevMonth} className="px-2.5 py-1 rounded border border-classic-300 hover:bg-white text-classic-700 font-sans text-xs">&lt; Prev</button>
+                                        <button onClick={nextMonth} className="px-2.5 py-1 rounded border border-classic-300 hover:bg-white text-classic-700 font-sans text-xs">Next &gt;</button>
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-7 border-l border-classic-200">
+                                    {weekDays}
+                                    {paddingDays}
+                                    {dayCells}
+                                </div>
+                                
+                                {/* Dynamic Heatmap Controls */}
+                                <div className="p-3 bg-classic-50 border-t border-classic-200 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-classic-700">
+                                    <div className="flex items-center gap-3 w-full md:w-auto">
+                                        <span className="font-semibold text-classic-900 whitespace-nowrap"><i className="fas fa-sliders-h mr-1 text-navy-600"></i> Heatmap Range:</span>
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-classic-500">Min: ₹</label>
+                                            <input 
+                                                type="number" 
+                                                value={heatmapMin} 
+                                                onChange={(e) => setHeatmapMin(Number(e.target.value))} 
+                                                className="w-16 border border-classic-300 rounded px-1.5 py-0.5 font-bold text-classic-900"
+                                            />
+                                            <input 
+                                                type="range" 
+                                                min="0" 
+                                                max="5000" 
+                                                step="50" 
+                                                value={heatmapMin} 
+                                                onChange={(e) => setHeatmapMin(Number(e.target.value))} 
+                                                className="w-20 accent-navy-600"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-classic-500">Max: ₹</label>
+                                            <input 
+                                                type="number" 
+                                                value={heatmapMax} 
+                                                onChange={(e) => setHeatmapMax(Number(e.target.value))} 
+                                                className="w-16 border border-classic-300 rounded px-1.5 py-0.5 font-bold text-classic-900"
+                                            />
+                                            <input 
+                                                type="range" 
+                                                min="500" 
+                                                max="20000" 
+                                                step="250" 
+                                                value={heatmapMax} 
+                                                onChange={(e) => setHeatmapMax(Number(e.target.value))} 
+                                                className="w-24 accent-navy-600"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Color Indicator */}
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-white border border-classic-300 rounded-sm"></span> ₹0</span>
+                                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-emerald-50 border border-emerald-200 rounded-sm"></span> &lt;₹{heatmapMin}</span>
+                                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-lime-50 border border-lime-200 rounded-sm"></span> Mid-1</span>
+                                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-amber-50 border border-amber-200 rounded-sm"></span> Mid-2</span>
+                                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-orange-100 border border-orange-300 rounded-sm"></span> Mid-3</span>
+                                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-100 border border-red-300 rounded-sm"></span> &lt;₹{heatmapMax}</span>
+                                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-200 border border-red-400 rounded-sm"></span> ₹{heatmapMax}+</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Active Tab View */}
+                        <div className="page-fade" key={`content-${activeTab}`}>
+                            
+                            {/* EXPENSES TAB */}
+                            {activeTab === 'expenses' && (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="p-4 rounded-lg border border-classic-200 bg-classic-50">
+                                            <p className="text-xs font-semibold uppercase text-classic-500 tracking-wider">Task Progress</p>
+                                            <p className="text-2xl font-bold text-classic-900 mt-1">{taskProgress}%</p>
+                                            <div className="w-full bg-classic-200 h-1.5 mt-2 rounded-full overflow-hidden">
+                                                <div className="bg-navy-600 h-full transition-all" style={{ width: `${taskProgress}%` }}></div>
+                                            </div>
+                                            <p className="text-xs text-classic-600 mt-1">{completedTasks} of {totalTasks} tasks completed</p>
+                                        </div>
+
+                                        <div className="p-4 rounded-lg border border-classic-200 bg-classic-50">
+                                            <p className="text-xs font-semibold uppercase text-classic-500 tracking-wider">Today's Total Spend</p>
+                                            <p className="text-2xl font-bold text-emerald-700 mt-1">₹{todaySpend.toFixed(2)}</p>
+                                            <p className="text-xs text-classic-600 mt-1">{todayExpenses.length} expense transactions logged</p>
+                                        </div>
+
+                                        <div className="p-4 rounded-lg border border-classic-200 bg-classic-50">
+                                            <p className="text-xs font-semibold uppercase text-classic-500 tracking-wider">Monthly Total Spend</p>
+                                            <p className="text-2xl font-bold text-navy-800 mt-1">₹{monthlySpend.toFixed(2)}</p>
+                                            <p className="text-xs text-classic-600 mt-1">For {format(selectedDate, 'MMMM yyyy')}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <div className="p-5 rounded-lg border border-classic-200 bg-white flex flex-col min-h-[300px]">
+                                            <div className="flex justify-between items-center mb-4 border-b border-classic-200 pb-2">
+                                                <h3 className="font-serif font-bold text-lg text-classic-900"><i className="fas fa-tasks mr-2 text-navy-600"></i>Tasks</h3>
+                                                <button onClick={() => setIsTaskModalOpen(true)} className="text-xs bg-navy-800 text-white px-2.5 py-1 rounded font-medium hover:bg-navy-600">+ Add</button>
+                                            </div>
+                                            <div className="space-y-2 flex-1">
+                                                {selectedDateTasks.length === 0 ? (
+                                                    <p className="text-sm text-classic-400 italic text-center py-8">No tasks logged for this day.</p>
+                                                ) : (
+                                                    selectedDateTasks.map(task => (
+                                                        <div key={task.id} className="flex items-center justify-between p-2 rounded hover:bg-classic-50 border border-transparent hover:border-classic-200 group">
+                                                            <div className="flex items-center space-x-3 overflow-hidden">
+                                                                <input type="checkbox" className="drawn-checkbox" checked={task.isCompletedOnDate} onChange={() => toggleTaskCompletion(task.id, task.type)} />
+                                                                <span className={`text-sm ${task.isCompletedOnDate ? 'line-through text-classic-400' : 'text-classic-800'}`}>{task.title}</span>
+                                                            </div>
+                                                            <button onClick={() => deleteTask(task.id)} className="text-classic-300 hover:text-red-600 text-xs opacity-0 group-hover:opacity-100">✕</button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="p-5 rounded-lg border border-classic-200 bg-white flex flex-col min-h-[300px]">
+                                            <div className="flex justify-between items-center mb-4 border-b border-classic-200 pb-2">
+                                                <h3 className="font-serif font-bold text-lg text-classic-900"><i className="fas fa-bell mr-2 text-amber-600"></i>Reminders</h3>
+                                                <button onClick={() => setIsReminderModalOpen(true)} className="text-xs bg-navy-800 text-white px-2.5 py-1 rounded font-medium hover:bg-navy-600">+ Add</button>
+                                            </div>
+                                            <div className="space-y-2 flex-1">
+                                                {selectedDateReminders.length === 0 ? (
+                                                    <p className="text-sm text-classic-400 italic text-center py-8">No reminders pinned.</p>
+                                                ) : (
+                                                    selectedDateReminders.map(reminder => (
+                                                        <div key={reminder.id} className="flex items-start justify-between p-2 rounded hover:bg-classic-50 border border-transparent hover:border-classic-200 group">
+                                                            <div className="flex items-start space-x-2">
+                                                                <span className="text-amber-600 text-xs mt-1">•</span>
+                                                                <span className="text-sm text-classic-800">{reminder.text}</span>
+                                                            </div>
+                                                            <button onClick={() => deleteReminder(reminder.id)} className="text-classic-300 hover:text-red-600 text-xs opacity-0 group-hover:opacity-100">✕</button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="p-5 rounded-lg border border-classic-200 bg-white flex flex-col min-h-[300px]">
+                                            <div className="flex justify-between items-center mb-4 border-b border-classic-200 pb-2">
+                                                <h3 className="font-serif font-bold text-lg text-classic-900"><i className="fas fa-receipt mr-2 text-emerald-600"></i>Today's Expenses</h3>
+                                                <button onClick={() => setIsExpenseModalOpen(true)} className="text-xs bg-navy-800 text-white px-2.5 py-1 rounded font-medium hover:bg-navy-600">+ Log Expense</button>
+                                            </div>
+                                            <div className="space-y-2 flex-1">
+                                                {todayExpenses.length === 0 ? (
+                                                    <p className="text-sm text-classic-400 italic text-center py-8">No expenses logged for today.</p>
+                                                ) : (
+                                                    todayExpenses.map(expense => (
+                                                        <div key={expense.id} className="flex justify-between items-center p-2 rounded hover:bg-classic-50 border border-classic-100 group">
+                                                            <div>
+                                                                <p className="text-sm font-medium text-classic-800">{expense.description}</p>
+                                                                <span className="text-[10px] uppercase font-semibold text-classic-400">Account: {expense.accountId || 'hdfc'}</span>
+                                                            </div>
+                                                            <div className="flex items-center space-x-2">
+                                                                <span className="text-sm font-bold text-classic-900">₹{Number(expense.amount).toFixed(2)}</span>
+                                                                <button onClick={() => deleteExpense(expense.id)} className="text-classic-300 hover:text-red-600 text-xs opacity-0 group-hover:opacity-100">✕</button>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* BANK BALANCE TAB */}
+                            {activeTab === 'balance' && (
+                                <div className="space-y-6">
+                                    <div className="p-6 rounded-xl border border-navy-100 bg-navy-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                        <div>
+                                            <h2 className="text-xl font-serif font-bold text-navy-800">Total Liquid Bank Balance</h2>
+                                            <p className="text-xs text-classic-600 mt-1">Calculated with Salary/Income added, Inter-bank Transfers, Expenses, and Paid Bills.</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button 
+                                                onClick={() => setIsIncomeModalOpen(true)}
+                                                className="bg-emerald-700 text-white font-medium text-xs px-3.5 py-2 rounded-md hover:bg-emerald-800 transition-colors shadow-sm flex items-center gap-1.5"
+                                            >
+                                                <i className="fas fa-plus-circle"></i> + Add Income / Salary
+                                            </button>
+                                            <button 
+                                                onClick={() => setIsTransferModalOpen(true)}
+                                                className="bg-navy-800 text-white font-medium text-xs px-3.5 py-2 rounded-md hover:bg-navy-600 transition-colors shadow-sm flex items-center gap-1.5"
+                                            >
+                                                <i className="fas fa-exchange-alt"></i> Transfer Funds
+                                            </button>
+                                            <div className="text-right pl-4 border-l border-navy-200">
+                                                <span className="text-xs font-semibold text-classic-500 uppercase tracking-wider block">Net Liquid</span>
+                                                <span className="text-2xl font-bold text-navy-800">₹{totalBankBalance.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        {accountSummaries.map(acc => (
+                                            <div key={acc.id} className="p-5 rounded-lg border border-classic-200 bg-white shadow-sm space-y-4 relative group">
+                                                <div className="flex justify-between items-center border-b border-classic-200 pb-3">
+                                                    <h3 className="font-serif font-bold text-base text-classic-900 flex items-center truncate">
+                                                        <i className={`fas ${acc.id === 'cash' ? 'fa-money-bill-wave' : 'fa-university'} text-navy-600 mr-2 flex-shrink-0`}></i> 
+                                                        <span className="truncate">{acc.name}</span>
+                                                    </h3>
+                                                    <button 
+                                                        onClick={() => setGearAccountModal(acc)} 
+                                                        className="text-classic-400 hover:text-navy-800 p-1 rounded transition-colors" 
+                                                        title="Adjust Opening Balance"
+                                                    >
+                                                        <i className="fas fa-cog"></i>
+                                                    </button>
+                                                </div>
+
+                                                <div className="text-center py-2 bg-classic-50 rounded-md border border-classic-100">
+                                                    <span className="text-[10px] font-semibold text-classic-500 uppercase tracking-wider block">Running Balance</span>
+                                                    <span className={`text-2xl font-bold ${acc.currentBalance >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                                        ₹{acc.currentBalance.toFixed(2)}
+                                                    </span>
+                                                </div>
+
+                                                <div className="space-y-1.5 text-xs font-sans">
+                                                    <div className="flex justify-between text-classic-600">
+                                                        <span>Salary / Income:</span>
+                                                        <span className="font-semibold text-emerald-700">+ ₹{acc.totalIncomes.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-classic-600">
+                                                        <span>Transfers In:</span>
+                                                        <span className="font-semibold text-emerald-700">+ ₹{acc.totalTransfersIn.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-classic-600">
+                                                        <span>Transfers Out:</span>
+                                                        <span className="font-semibold text-red-600">- ₹{acc.totalTransfersOut.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-classic-600">
+                                                        <span>Expenses:</span>
+                                                        <span className="font-semibold text-red-600">- ₹{acc.totalDeductedExpenses.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-classic-600">
+                                                        <span>Paid Bills:</span>
+                                                        <span className="font-semibold text-red-600">- ₹{acc.totalPaidBills.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-classic-900 font-bold border-t border-classic-200 pt-2 text-sm">
+                                                        <span>Projected:</span>
+                                                        <span className={acc.projectedBalance >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                                                            ₹{acc.projectedBalance.toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* DEBTORS & CREDITORS TAB */}
+                            {activeTab === 'debtors' && (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <div className="p-4 rounded-lg border border-emerald-200 bg-emerald-50">
+                                            <p className="text-xs font-semibold uppercase text-emerald-800 tracking-wider">Total Debtors (To Receive)</p>
+                                            <p className="text-2xl font-bold text-emerald-800 mt-1">₹{debtorTotal.toFixed(2)}</p>
+                                        </div>
+
+                                        <div className="p-4 rounded-lg border border-red-200 bg-red-50">
+                                            <p className="text-xs font-semibold uppercase text-red-800 tracking-wider">Total Creditors (To Give)</p>
+                                            <p className="text-2xl font-bold text-red-800 mt-1">₹{creditorTotal.toFixed(2)}</p>
+                                        </div>
+
+                                        <div className="p-4 rounded-lg border border-classic-200 bg-classic-50">
+                                            <p className="text-xs font-semibold uppercase text-classic-500 tracking-wider">Net Position</p>
+                                            <p className={`text-2xl font-bold mt-1 ${debtorTotal - creditorTotal >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                                ₹{(debtorTotal - creditorTotal).toFixed(2)}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-between items-center border-b border-classic-200 pb-3">
+                                        <h2 className="text-xl font-serif font-bold text-classic-900">Personal Lenders & Debtors Directory</h2>
+                                        <button 
+                                            onClick={() => setIsDebtorCreditorModalOpen(true)}
+                                            className="bg-navy-800 text-white font-medium text-xs px-3.5 py-2 rounded-md hover:bg-navy-600 transition-colors"
+                                        >
+                                            + Add Entry
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="border border-classic-200 rounded-lg overflow-hidden bg-white">
+                                            <div className="p-3 bg-emerald-100 border-b border-emerald-200 flex justify-between items-center">
+                                                <h3 className="font-serif font-bold text-emerald-900"><i className="fas fa-arrow-down mr-2"></i>Debtors (Money to Receive)</h3>
+                                            </div>
+                                            <div className="divide-y divide-classic-200">
+                                                {debtorsCreditors.filter(i => i.type === 'debtor').length === 0 ? (
+                                                    <p className="text-sm text-classic-400 italic text-center py-6">No debtor records added.</p>
+                                                ) : (
+                                                    debtorsCreditors.filter(i => i.type === 'debtor').map(item => (
+                                                        <div key={item.id} className={`p-3 flex justify-between items-center ${item.settled ? 'bg-classic-50 opacity-60' : ''}`}>
+                                                            <div>
+                                                                <p className={`text-sm font-bold ${item.settled ? 'line-through text-classic-500' : 'text-classic-900'}`}>{item.name}</p>
+                                                                <p className="text-xs text-classic-500">{item.note || 'No note'} • Due: {item.dueDate}</p>
+                                                            </div>
+                                                            <div className="flex items-center space-x-3">
+                                                                <span className="text-sm font-bold text-emerald-700">₹{item.amount.toFixed(2)}</span>
+                                                                <button onClick={() => toggleDCSettled(item.id)} className={`text-xs px-2 py-0.5 rounded font-semibold ${item.settled ? 'bg-classic-200 text-classic-700' : 'bg-emerald-100 text-emerald-800'}`}>
+                                                                    {item.settled ? 'Settled' : 'Mark Settled'}
+                                                                </button>
+                                                                <button onClick={() => deleteDC(item.id)} className="text-classic-300 hover:text-red-600 text-xs">✕</button>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="border border-classic-200 rounded-lg overflow-hidden bg-white">
+                                            <div className="p-3 bg-red-100 border-b border-red-200 flex justify-between items-center">
+                                                <h3 className="font-serif font-bold text-red-900"><i className="fas fa-arrow-up mr-2"></i>Creditors (Money to Give)</h3>
+                                            </div>
+                                            <div className="divide-y divide-classic-200">
+                                                {debtorsCreditors.filter(i => i.type === 'creditor').length === 0 ? (
+                                                    <p className="text-sm text-classic-400 italic text-center py-6">No creditor records added.</p>
+                                                ) : (
+                                                    debtorsCreditors.filter(i => i.type === 'creditor').map(item => (
+                                                        <div key={item.id} className={`p-3 flex justify-between items-center ${item.settled ? 'bg-classic-50 opacity-60' : ''}`}>
+                                                            <div>
+                                                                <p className={`text-sm font-bold ${item.settled ? 'line-through text-classic-500' : 'text-classic-900'}`}>{item.name}</p>
+                                                                <p className="text-xs text-classic-500">{item.note || 'No note'} • Due: {item.dueDate}</p>
+                                                            </div>
+                                                            <div className="flex items-center space-x-3">
+                                                                <span className="text-sm font-bold text-red-700">₹{item.amount.toFixed(2)}</span>
+                                                                <button onClick={() => toggleDCSettled(item.id)} className={`text-xs px-2 py-0.5 rounded font-semibold ${item.settled ? 'bg-classic-200 text-classic-700' : 'bg-red-100 text-red-800'}`}>
+                                                                    {item.settled ? 'Paid' : 'Mark Paid'}
+                                                                </button>
+                                                                <button onClick={() => deleteDC(item.id)} className="text-classic-300 hover:text-red-600 text-xs">✕</button>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* LOANS TAB */}
+                            {activeTab === 'loans' && (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <div className="p-4 rounded-lg border border-navy-200 bg-navy-50">
+                                            <p className="text-xs font-semibold uppercase text-navy-800 tracking-wider">Bank Loans Outstanding</p>
+                                            <p className="text-2xl font-bold text-navy-900 mt-1">₹{bankLoanTotal.toFixed(2)}</p>
+                                        </div>
+
+                                        <div className="p-4 rounded-lg border border-amber-200 bg-amber-50">
+                                            <p className="text-xs font-semibold uppercase text-amber-800 tracking-wider">Credit Card Outstanding</p>
+                                            <p className="text-2xl font-bold text-amber-900 mt-1">₹{creditCardTotal.toFixed(2)}</p>
+                                        </div>
+
+                                        <div className="p-4 rounded-lg border border-red-200 bg-red-50">
+                                            <p className="text-xs font-semibold uppercase text-red-800 tracking-wider">Total Institutional Liabilities</p>
+                                            <p className="text-2xl font-bold text-red-800 mt-1">₹{totalInstitutionalLoans.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-between items-center border-b border-classic-200 pb-3">
+                                        <div>
+                                            <h2 className="text-xl font-serif font-bold text-classic-900">Institutional Loans & Credit Cards</h2>
+                                        </div>
+                                        <button 
+                                            onClick={() => setIsLoanModalOpen(true)}
+                                            className="bg-navy-800 text-white font-medium text-xs px-3.5 py-2 rounded-md hover:bg-navy-600 transition-colors"
+                                        >
+                                            + Add Loan / CC
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="border border-classic-200 rounded-lg overflow-hidden bg-white">
+                                            <div className="p-3 bg-navy-100 border-b border-navy-200 flex justify-between items-center">
+                                                <h3 className="font-serif font-bold text-navy-900"><i className="fas fa-university mr-2"></i>Bank Loans</h3>
+                                            </div>
+                                            <div className="divide-y divide-classic-200">
+                                                {loans.filter(l => l.loanType === 'bank').length === 0 ? (
+                                                    <p className="text-sm text-classic-400 italic text-center py-6">No bank loans added.</p>
+                                                ) : (
+                                                    loans.filter(l => l.loanType === 'bank').map(loan => (
+                                                        <div key={loan.id} className="p-3 flex justify-between items-center">
+                                                            <div>
+                                                                <p className="text-sm font-bold text-classic-900">{loan.name}</p>
+                                                                <p className="text-xs text-classic-500">{loan.bankName || 'Bank'} • EMI: ₹{loan.emi ? loan.emi.toFixed(2) : 'N/A'}</p>
+                                                            </div>
+                                                            <div className="flex items-center space-x-3">
+                                                                <span className="text-sm font-bold text-navy-800">₹{loan.amount.toFixed(2)}</span>
+                                                                <button onClick={() => deleteLoan(loan.id)} className="text-classic-300 hover:text-red-600 text-xs">✕</button>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="border border-classic-200 rounded-lg overflow-hidden bg-white">
+                                            <div className="p-3 bg-amber-100 border-b border-amber-200 flex justify-between items-center">
+                                                <h3 className="font-serif font-bold text-amber-900"><i className="fas fa-credit-card mr-2"></i>Credit Card Liabilities</h3>
+                                            </div>
+                                            <div className="divide-y divide-classic-200">
+                                                {loans.filter(l => l.loanType === 'credit_card').length === 0 ? (
+                                                    <p className="text-sm text-classic-400 italic text-center py-6">No credit card liabilities added.</p>
+                                                ) : (
+                                                    loans.filter(l => l.loanType === 'credit_card').map(loan => (
+                                                        <div key={loan.id} className="p-3 flex justify-between items-center">
+                                                            <div>
+                                                                <p className="text-sm font-bold text-classic-900">{loan.name}</p>
+                                                                <p className="text-xs text-classic-500">{loan.bankName || 'Issuer'}</p>
+                                                            </div>
+                                                            <div className="flex items-center space-x-3">
+                                                                <span className="text-sm font-bold text-amber-800">₹{loan.amount.toFixed(2)}</span>
+                                                                <button onClick={() => deleteLoan(loan.id)} className="text-classic-300 hover:text-red-600 text-xs">✕</button>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* STOCK PORTFOLIO TAB */}
+                            {activeTab === 'stocks' && (
+                                <div className="space-y-6">
+                                    <div className="p-6 rounded-xl border border-emerald-100 bg-emerald-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                        <div>
+                                            <h2 className="text-xl font-serif font-bold text-emerald-900">Stock Investment Portfolio</h2>
+                                            <p className="text-xs text-emerald-700 mt-1">Manually enter your stock assets and market valuations. Total auto-links to 13 Feb.</p>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <button 
+                                                onClick={() => setIsStockModalOpen(true)}
+                                                className="bg-emerald-800 text-white font-medium text-xs px-4 py-2 rounded-md hover:bg-emerald-700 transition-colors shadow-sm"
+                                            >
+                                                + Add Stock Entry
+                                            </button>
+                                            <div className="text-right pl-4 border-l border-emerald-200">
+                                                <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider block">Total Portfolio</span>
+                                                <span className="text-3xl font-bold text-emerald-900">₹{totalStockValuation.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-6 rounded-lg border border-classic-200 bg-white">
+                                        <div className="flex justify-between items-center border-b border-classic-200 pb-3 mb-4">
+                                            <h3 className="font-serif font-bold text-lg text-classic-900">Stock Holdings Directory</h3>
+                                            <span className="text-xs text-classic-500 font-medium">{stocks.length} holdings listed</span>
+                                        </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full text-xs text-left">
+                                                <thead className="bg-classic-100 uppercase text-classic-600">
+                                                    <tr>
+                                                        <th className="p-3">Stock / Asset Name</th>
+                                                        <th className="p-3">Notes / Quantity</th>
+                                                        <th className="p-3 text-right">Current Valuation</th>
+                                                        <th className="p-3 text-center">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-classic-200">
+                                                    {stocks.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan="4" className="p-8 text-center text-classic-400 italic">No stock holdings recorded yet.</td>
+                                                        </tr>
+                                                    ) : (
+                                                        stocks.map(stock => (
+                                                            <tr key={stock.id} className="hover:bg-classic-50">
+                                                                <td className="p-3 font-bold text-classic-900 text-sm">{stock.name}</td>
+                                                                <td className="p-3 text-classic-500">{stock.note || '—'}</td>
+                                                                <td className="p-3 text-right font-bold text-emerald-700 text-sm">₹{stock.valuation.toFixed(2)}</td>
+                                                                <td className="p-3 text-center">
+                                                                    <button onClick={() => deleteStock(stock.id)} className="text-classic-300 hover:text-red-600 px-2 py-1">✕</button>
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* BUDGET TAB */}
+                            {activeTab === 'budget' && (
+                                <div className="space-y-6">
+                                    <div className="p-4 sm:p-6 rounded-lg border border-classic-200 bg-white shadow-sm">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-classic-200 pb-3 mb-4 gap-2">
+                                            <h2 className="font-serif text-lg sm:text-xl font-bold text-classic-900">Monthly Budget Limits</h2>
+                                            <div className="flex items-center space-x-2 text-sm">
+                                                <span className="text-classic-500 font-medium">Monthly Limit: ₹</span>
+                                                <input type="number" className="border border-classic-300 rounded px-2 py-1 font-bold text-classic-900 w-28 focus:outline-navy-600" placeholder="0" value={currentBudget} onChange={handleBudgetChange} />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 text-center">
+                                            <div className="p-3 bg-classic-50 rounded border border-classic-200">
+                                                <p className="text-[10px] sm:text-xs uppercase font-semibold text-classic-500">Total Planned</p>
+                                                <p className="text-lg sm:text-2xl font-bold text-navy-800 mt-1">₹{totalScheduledBills.toFixed(2)}</p>
+                                            </div>
+                                            <div className="p-3 bg-classic-50 rounded border border-classic-200">
+                                                <p className="text-[10px] sm:text-xs uppercase font-semibold text-classic-500">Paid Items</p>
+                                                <p className="text-lg sm:text-2xl font-bold text-emerald-700 mt-1">₹{totalPaidBills.toFixed(2)}</p>
+                                            </div>
+                                            <div className="p-3 bg-classic-50 rounded border border-classic-200">
+                                                <p className="text-[10px] sm:text-xs uppercase font-semibold text-classic-500">Pending Due</p>
+                                                <p className="text-lg sm:text-2xl font-bold text-amber-700 mt-1">₹{totalUnpaidBills.toFixed(2)}</p>
+                                            </div>
+                                            <div className="p-3 bg-classic-50 rounded border border-classic-200">
+                                                <p className="text-[10px] sm:text-xs uppercase font-semibold text-classic-500">Remaining Limit</p>
+                                                <p className={`text-lg sm:text-2xl font-bold mt-1 ${remainingBudget < 0 ? 'text-red-600' : 'text-emerald-700'}`}>₹{remainingBudget.toFixed(2)}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 rounded-lg border border-navy-200 bg-navy-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                        <div>
+                                            <p className="text-xs font-semibold text-navy-800 uppercase tracking-wider">Scheduled Dues for {format(selectedDate, 'MMMM do, yyyy')}</p>
+                                            <p className="text-xs text-classic-600 mt-0.5">{selectedDateBills.length} budget item(s) due on this target date</p>
+                                        </div>
+                                        <div className="text-right self-end sm:self-auto">
+                                            <span className="text-xl sm:text-2xl font-bold text-navy-900">₹{selectedDateBillTotal.toFixed(2)}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 sm:p-6 rounded-lg border border-classic-200 bg-white">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-classic-200 pb-3 mb-4 gap-2">
+                                            <div>
+                                                <h3 className="font-serif font-bold text-lg text-classic-900">Scheduled Budget Items & Bills</h3>
+                                                <p className="text-xs text-classic-500">Items added here link to the target date. Click pencil to edit any line item directly.</p>
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    setNewBill({ title: '', amount: '', type: 'one-time', accountId: 'hdfc' });
+                                                    setIsBillModalOpen(true);
+                                                }} 
+                                                className="bg-navy-800 text-white font-medium text-xs px-3 py-2 rounded hover:bg-navy-600 self-end sm:self-auto"
+                                            >
+                                                + Add Entry for {format(selectedDate, 'MMM d')}
+                                            </button>
+                                        </div>
+
+                                        <div className="divide-y divide-classic-200">
+                                            {monthlyBills.length === 0 ? (
+                                                <p className="text-sm text-classic-400 italic text-center py-6">No scheduled budget entries added for this month.</p>
+                                            ) : (
+                                                monthlyBills.map(bill => (
+                                                    <div key={bill.id} className="py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 group">
+                                                        <div className="flex items-center space-x-3 w-full sm:w-auto">
+                                                            <input type="checkbox" className="drawn-checkbox flex-shrink-0" checked={bill.isPaidForMonth} onChange={() => toggleBillPayment(bill.id)} />
+                                                            <div className="overflow-hidden">
+                                                                <p className={`text-sm font-semibold truncate ${bill.isPaidForMonth ? 'line-through text-classic-400' : 'text-classic-900'}`}>{bill.title}</p>
+                                                                <p className="text-xs text-classic-500 uppercase flex flex-wrap gap-x-2">
+                                                                    <span>{bill.type}</span> • 
+                                                                    <span>Date: {bill.date}</span> • 
+                                                                    <span>Account: {bill.accountId || 'hdfc'}</span>
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center space-x-3 self-end sm:self-auto pl-7 sm:pl-0">
+                                                            <span className="text-sm font-bold text-classic-900">₹{Number(bill.amount).toFixed(2)}</span>
+                                                            <button 
+                                                                onClick={() => handleOpenEditBill(bill)} 
+                                                                className="text-navy-600 hover:text-navy-800 text-xs px-2 py-1 rounded bg-navy-50 border border-navy-100 font-medium"
+                                                                title="Edit Entry"
+                                                            >
+                                                                <i className="fas fa-pencil-alt mr-1"></i>Edit
+                                                            </button>
+                                                            <button onClick={() => deleteBill(bill.id)} className="text-classic-300 hover:text-red-600 text-xs p-1" title="Delete">✕</button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SAVINGS TAB */}
+                            {activeTab === 'savings' && (
+                                <div className="space-y-6">
+                                    <div className="p-6 rounded-xl border border-teal-100 bg-teal-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                        <div>
+                                            <h2 className="text-xl font-serif font-bold text-teal-900">Savings & Investments Ledger</h2>
+                                            <p className="text-xs text-teal-700 mt-1">Log liquid savings, fixed deposits, mutual funds, emergency funds, and gold. Total automatically links to 13 Feb.</p>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <button 
+                                                onClick={() => setIsSavingsModalOpen(true)}
+                                                className="bg-teal-800 text-white font-medium text-xs px-4 py-2 rounded-md hover:bg-teal-700 transition-colors shadow-sm"
+                                            >
+                                                + Add Savings Entry
+                                            </button>
+                                            <div className="text-right pl-4 border-l border-teal-200">
+                                                <span className="text-xs font-semibold text-teal-800 uppercase tracking-wider block">Total Savings</span>
+                                                <span className="text-3xl font-bold text-teal-900">₹{totalSavingsValuation.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-6 rounded-lg border border-classic-200 bg-white">
+                                        <div className="flex justify-between items-center border-b border-classic-200 pb-3 mb-4">
+                                            <h3 className="font-serif font-bold text-lg text-classic-900">Savings Assets Breakdown</h3>
+                                            <span className="text-xs text-classic-500 font-medium">{savingsList.length} savings entries recorded</span>
+                                        </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full text-xs text-left">
+                                                <thead className="bg-classic-100 uppercase text-classic-600">
+                                                    <tr>
+                                                        <th className="p-3">Asset / Deposit Name</th>
+                                                        <th className="p-3">Category</th>
+                                                        <th className="p-3">Notes</th>
+                                                        <th className="p-3 text-right">Amount (₹)</th>
+                                                        <th className="p-3 text-center">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-classic-200">
+                                                    {savingsList.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan="5" className="p-8 text-center text-classic-400 italic">No savings items added yet. Click "+ Add Savings Entry" to start logging your savings.</td>
+                                                        </tr>
+                                                    ) : (
+                                                        savingsList.map(item => (
+                                                            <tr key={item.id} className="hover:bg-classic-50">
+                                                                <td className="p-3 font-bold text-classic-900 text-sm">{item.name}</td>
+                                                                <td className="p-3 text-classic-600 font-medium">{item.category}</td>
+                                                                <td className="p-3 text-classic-500">{item.note || '—'}</td>
+                                                                <td className="p-3 text-right font-bold text-teal-700 text-sm">₹{item.amount.toFixed(2)}</td>
+                                                                <td className="p-3 text-center">
+                                                                    <button onClick={() => deleteSavings(item.id)} className="text-classic-300 hover:text-red-600 px-2 py-1">✕</button>
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 13 FEB - WEDDING ANALYSIS TAB */}
+                            {activeTab === 'wedding' && (
+                                <div className="space-y-6">
+                                    <div className="p-6 rounded-xl border border-pink-200 bg-pink-50/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                        <div>
+                                            <h2 className="text-2xl font-serif font-bold text-classic-900 flex items-center gap-2">
+                                                <i className="fas fa-ring text-rose-600"></i> 13 February — Wedding Financial Analysis
+                                            </h2>
+                                            <p className="text-xs text-classic-600 mt-1">Calculates budget requirements against your auto-fetched Savings tab, auto-fetched Stock Portfolio, and planned loans.</p>
+                                        </div>
+                                        <div className="text-right bg-white p-3.5 rounded-lg border border-pink-200 shadow-sm min-w-[220px]">
+                                            <span className="text-xs font-semibold text-classic-500 uppercase tracking-wider block">Remaining Shortfall</span>
+                                            <span className={`text-2xl font-bold ${weddingRemaining > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                                ₹{weddingRemaining.toFixed(2)}
+                                            </span>
+                                            {weddingRemaining <= 0 && weddingReqNum > 0 && (
+                                                <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">✓ Target Fully Covered!</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Summary Stats Grid */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                                        <div className="p-3.5 rounded-lg border border-classic-200 bg-white shadow-sm">
+                                            <p className="text-[10px] font-semibold uppercase text-classic-500">1. Required</p>
+                                            <p className="text-xl font-bold text-classic-900 mt-1">₹{weddingReqNum.toFixed(2)}</p>
+                                        </div>
+                                        <div className="p-3.5 rounded-lg border border-teal-200 bg-teal-50/60 shadow-sm">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[10px] font-semibold uppercase text-teal-800">2. Savings</p>
+                                                <span className="text-[9px] bg-teal-200 text-teal-900 px-1.5 py-0.2 rounded font-bold">Auto</span>
+                                            </div>
+                                            <p className="text-xl font-bold text-teal-800 mt-1">₹{weddingSavingsNum.toFixed(2)}</p>
+                                        </div>
+                                        <div className="p-3.5 rounded-lg border border-emerald-200 bg-emerald-50/60 shadow-sm">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[10px] font-semibold uppercase text-emerald-800">3. Stocks</p>
+                                                <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-bold">Auto</span>
+                                            </div>
+                                            <p className="text-xl font-bold text-emerald-800 mt-1">₹{weddingStocksNum.toFixed(2)}</p>
+                                        </div>
+                                        <div className="p-3.5 rounded-lg border border-navy-200 bg-navy-50/60 shadow-sm">
+                                            <p className="text-[10px] font-semibold uppercase text-navy-800">4. Loan</p>
+                                            <p className="text-xl font-bold text-navy-900 mt-1">₹{weddingLoanNum.toFixed(2)}</p>
+                                        </div>
+                                        <div className="p-3.5 rounded-lg border border-purple-200 bg-purple-50/60 shadow-sm">
+                                            <p className="text-[10px] font-semibold uppercase text-purple-800">5. Arranged</p>
+                                            <p className="text-xl font-bold text-purple-900 mt-1">₹{weddingTotalArranged.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Funding Coverage Progress */}
+                                    {weddingReqNum > 0 && (
+                                        <div className="p-4 rounded-lg border border-classic-200 bg-white shadow-sm">
+                                            <div className="flex justify-between items-center text-xs font-semibold text-classic-700 mb-1.5">
+                                                <span>Budget Coverage Progress</span>
+                                                <span>{weddingProgress}% Arranged</span>
+                                            </div>
+                                            <div className="w-full bg-classic-200 h-3 rounded-full overflow-hidden">
+                                                <div 
+                                                    className={`h-full transition-all duration-300 ${weddingRemaining <= 0 ? 'bg-emerald-600' : 'bg-navy-800'}`} 
+                                                    style={{ width: `${weddingProgress}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Inputs Ledger */}
+                                    <div className="p-6 rounded-lg border border-classic-200 bg-white shadow-sm space-y-5">
+                                        <h3 className="font-serif font-bold text-lg text-classic-900 pb-2 border-b border-classic-200">
+                                            Wedding Budget Input Parameters
+                                        </h3>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase tracking-wider text-classic-700 mb-1">
+                                                    1. Wedding Amount Required (₹)
+                                                </label>
+                                                <input 
+                                                    type="number" 
+                                                    step="0.01" 
+                                                    placeholder="Enter total estimated budget..." 
+                                                    className="w-full border border-classic-300 rounded-md px-3 py-2 text-base font-bold text-classic-900 focus:outline-navy-600"
+                                                    value={weddingData.required} 
+                                                    onChange={e => setWeddingData({ ...weddingData, required: e.target.value })}
+                                                />
+                                                <p className="text-[11px] text-classic-500 mt-1">Total projected cost for venue, catering, decor, and ceremonies.</p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase tracking-wider text-teal-800 mb-1 flex items-center justify-between">
+                                                    <span>2. Savings (From Savings Tab)</span>
+                                                    <span className="text-[10px] bg-teal-100 text-teal-800 px-2 py-0.5 rounded font-bold"><i className="fas fa-sync-alt mr-1"></i>Auto-Synced</span>
+                                                </label>
+                                                <div className="w-full border border-teal-200 bg-teal-50/50 rounded-md px-3 py-2 text-base font-bold text-teal-900 flex justify-between items-center">
+                                                    <span>₹{weddingSavingsNum.toFixed(2)}</span>
+                                                    <button onClick={() => handleTabClick('savings')} className="text-xs text-teal-800 underline hover:text-teal-900 font-sans font-medium">Manage Savings →</button>
+                                                </div>
+                                                <p className="text-[11px] text-classic-500 mt-1">Automatically computed from entries in your Savings tab.</p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase tracking-wider text-emerald-800 mb-1 flex items-center justify-between">
+                                                    <span>3. Stock Portfolio (From Stocks Tab)</span>
+                                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold"><i className="fas fa-sync-alt mr-1"></i>Auto-Synced</span>
+                                                </label>
+                                                <div className="w-full border border-emerald-200 bg-emerald-50/50 rounded-md px-3 py-2 text-base font-bold text-emerald-900 flex justify-between items-center">
+                                                    <span>₹{weddingStocksNum.toFixed(2)}</span>
+                                                    <button onClick={() => handleTabClick('stocks')} className="text-xs text-emerald-800 underline hover:text-emerald-900 font-sans font-medium">Manage Stocks →</button>
+                                                </div>
+                                                <p className="text-[11px] text-classic-500 mt-1">Automatically computed from entries in your Stock Portfolio tab.</p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase tracking-wider text-classic-700 mb-1">
+                                                    4. Wedding Loan Planned (₹)
+                                                </label>
+                                                <input 
+                                                    type="number" 
+                                                    step="0.01" 
+                                                    placeholder="Enter loan amount to be taken..." 
+                                                    className="w-full border border-classic-300 rounded-md px-3 py-2 text-base font-bold text-navy-800 focus:outline-navy-600"
+                                                    value={weddingData.loan} 
+                                                    onChange={e => setWeddingData({ ...weddingData, loan: e.target.value })}
+                                                />
+                                                <p className="text-[11px] text-classic-500 mt-1">Estimated bank or personal loan to finance the wedding.</p>
+                                            </div>
+
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-bold uppercase tracking-wider text-classic-700 mb-1">
+                                                    5. Additional Contributions / Other (₹)
+                                                </label>
+                                                <input 
+                                                    type="number" 
+                                                    step="0.01" 
+                                                    placeholder="Enter any other contributions..." 
+                                                    className="w-full border border-classic-300 rounded-md px-3 py-2 text-base font-bold text-purple-900 focus:outline-navy-600"
+                                                    value={weddingData.other} 
+                                                    onChange={e => setWeddingData({ ...weddingData, other: e.target.value })}
+                                                />
+                                                <p className="text-[11px] text-classic-500 mt-1">Family gifts, secondary income, or other expected funds.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className={`p-4 rounded-lg border ${weddingRemaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} flex justify-between items-center`}>
+                                            <div>
+                                                <span className="text-xs font-bold uppercase tracking-wider text-classic-600 block">Calculation Summary</span>
+                                                <span className="text-sm font-semibold text-classic-900">
+                                                    {weddingRemaining > 0 
+                                                        ? `Shortfall of ₹${weddingRemaining.toFixed(2)} still needs to be arranged.` 
+                                                        : `Surplus of ₹${Math.abs(weddingRemaining).toFixed(2)} available over requirement!`}
+                                                </span>
+                                            </div>
+                                            <span className={`text-xl font-bold ${weddingRemaining > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
+                                                ₹{weddingRemaining.toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* GOALS TAB */}
+                            {activeTab === 'goals' && (
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-center border-b border-classic-200 pb-3">
+                                        <h2 className="text-xl font-serif font-bold text-classic-900">Personal Goals & Ambitions</h2>
+                                        <button onClick={() => setIsGoalModalOpen(true)} className="bg-navy-800 text-white font-medium text-xs px-3.5 py-2 rounded-md hover:bg-navy-600">+ Add Goal</button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {goals.length === 0 ? (
+                                            <p className="col-span-2 text-center text-classic-400 italic py-12">No goals set yet.</p>
+                                        ) : (
+                                            goals.map(goal => {
+                                                const tDate = parseLocalDate(goal.targetDate);
+                                                const daysLeft = differenceInDays(tDate, startOfDay(new Date()));
+                                                return (
+                                                    <div key={goal.id} className="p-4 rounded-lg border border-classic-200 bg-white flex justify-between items-center shadow-sm">
+                                                        <div className="flex items-center space-x-3">
+                                                            <input type="checkbox" className="drawn-checkbox" checked={goal.completed} onChange={() => toggleGoalCompletion(goal.id)} />
+                                                            <div>
+                                                                <p className={`text-sm font-bold ${goal.completed ? 'line-through text-classic-400' : 'text-classic-900'}`}>{goal.title}</p>
+                                                                <p className="text-xs text-classic-500">Target: {goal.targetDate}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center space-x-3">
+                                                            <span className={`text-xs font-semibold px-2 py-1 rounded ${daysLeft < 0 ? 'bg-red-100 text-red-800' : 'bg-navy-50 text-navy-800'}`}>
+                                                                {daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left`}
+                                                            </span>
+                                                            <button onClick={() => deleteGoal(goal.id)} className="text-classic-300 hover:text-red-600 text-xs">✕</button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* MASTER DATA TAB */}
+                            {activeTab === 'data' && (
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-center border-b border-classic-200 pb-3">
+                                        <h2 className="text-xl font-serif font-bold text-classic-900">Master Data Ledger</h2>
+                                        <select className="border border-classic-300 rounded px-2.5 py-1 text-xs font-semibold" value={dataMonthFilter} onChange={e => setDataMonthFilter(e.target.value)}>
+                                            <option value="all">All Months</option>
+                                            {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                                        </select>
+                                    </div>
+
+                                    <div className="p-4 rounded-lg border border-classic-200 bg-white shadow-sm overflow-x-auto">
+                                        <h3 className="font-serif font-bold text-sm text-classic-900 mb-3">All Logged Expenses</h3>
+                                        <table className="min-w-full text-xs text-left">
+                                            <thead className="bg-classic-100 uppercase text-classic-600">
+                                                <tr>
+                                                    <th className="p-2">Exclude</th>
+                                                    <th className="p-2">Date</th>
+                                                    <th className="p-2">Description</th>
+                                                    <th className="p-2">Bank</th>
+                                                    <th className="p-2 text-right">Amount (₹)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-classic-200">
+                                                {expenses.map(e => (
+                                                    <tr key={e.id} className={excludedIds.includes(e.id) ? 'bg-red-50 text-classic-400 line-through' : ''}>
+                                                        <td className="p-2"><input type="checkbox" checked={excludedIds.includes(e.id)} onChange={() => toggleExclusion(e.id)} /></td>
+                                                        <td className="p-2">{e.date}</td>
+                                                        <td className="p-2 font-medium">{e.description}</td>
+                                                        <td className="p-2 uppercase">{e.accountId || 'hdfc'}</td>
+                                                        <td className="p-2 text-right font-bold">₹{Number(e.amount).toFixed(2)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Bill Modal (Add Entry) */}
+                        {isBillModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200 my-auto">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-2">Add Budget Line Entry</h3>
+                                    <p className="text-xs text-classic-500 mb-4">Adding entry for target date: <strong className="text-navy-800">{selectedDateStr}</strong></p>
+                                    <form onSubmit={handleAddBill} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Transaction / Item Title</label>
+                                            <input type="text" autoFocus required placeholder="Item title (e.g., Grocery, Rent)..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newBill.title} onChange={e => setNewBill({...newBill, title: e.target.value})} />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Amount (₹)</label>
+                                            <input type="number" step="0.01" required placeholder="Amount (₹)" className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={newBill.amount} onChange={e => setNewBill({...newBill, amount: e.target.value})} />
+                                        </div>
+
+                                        <div className="flex space-x-4 text-xs text-classic-700">
+                                            <label className="flex items-center space-x-1"><input type="radio" value="one-time" checked={newBill.type === 'one-time'} onChange={e => setNewBill({...newBill, type: e.target.value})} /><span>One-time</span></label>
+                                            <label className="flex items-center space-x-1"><input type="radio" value="recurring" checked={newBill.type === 'recurring'} onChange={e => setNewBill({...newBill, type: e.target.value})} /><span>Monthly Recurring</span></label>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Pay From Bank Account</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm text-classic-800 focus:outline-navy-600" value={newBill.accountId} onChange={e => setNewBill({...newBill, accountId: e.target.value})}>
+                                                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsBillModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Save Entry</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Bill Modal (Edit Line Item) */}
+                        {isEditBillModalOpen && editingBill && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200 my-auto">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Edit Budget Line Item</h3>
+                                    <form onSubmit={handleUpdateBill} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Title</label>
+                                            <input type="text" required className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={editingBill.title} onChange={e => setEditingBill({...editingBill, title: e.target.value})} />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Amount (₹)</label>
+                                            <input type="number" step="0.01" required className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={editingBill.amount} onChange={e => setEditingBill({...editingBill, amount: e.target.value})} />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Target Date</label>
+                                            <input type="date" required className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={editingBill.date} onChange={e => setEditingBill({...editingBill, date: e.target.value})} />
+                                        </div>
+
+                                        <div className="flex space-x-4 text-xs text-classic-700">
+                                            <label className="flex items-center space-x-1"><input type="radio" value="one-time" checked={editingBill.type === 'one-time'} onChange={e => setEditingBill({...editingBill, type: e.target.value})} /><span>One-time</span></label>
+                                            <label className="flex items-center space-x-1"><input type="radio" value="recurring" checked={editingBill.type === 'recurring'} onChange={e => setEditingBill({...editingBill, type: e.target.value})} /><span>Monthly Recurring</span></label>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Bank Account</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm text-classic-800 focus:outline-navy-600" value={editingBill.accountId} onChange={e => setEditingBill({...editingBill, accountId: e.target.value})}>
+                                                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsEditBillModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Update Item</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Income Modal */}
+                        {isIncomeModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Record Income / Salary</h3>
+                                    <form onSubmit={handleAddIncome} className="space-y-3">
+                                        <input type="text" autoFocus required placeholder="Source (e.g. Monthly Salary)..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newIncome.source} onChange={e => setNewIncome({...newIncome, source: e.target.value})} />
+                                        <input type="number" step="0.01" required placeholder="Amount (₹)" className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={newIncome.amount} onChange={e => setNewIncome({...newIncome, amount: e.target.value})} />
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Credit to Bank</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newIncome.accountId} onChange={e => setNewIncome({...newIncome, accountId: e.target.value})}>
+                                                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <input type="date" className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newIncome.date} onChange={e => setNewIncome({...newIncome, date: e.target.value})} />
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsIncomeModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-emerald-800 text-white rounded font-medium">Record Income</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Transfer Modal */}
+                        {isTransferModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Inter-Bank Fund Transfer</h3>
+                                    <form onSubmit={handleAddTransfer} className="space-y-3">
+                                        <input type="number" step="0.01" required placeholder="Transfer Amount (₹)" className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={newTransfer.amount} onChange={e => setNewTransfer({...newTransfer, amount: e.target.value})} />
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">From Bank Account</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newTransfer.fromAccountId} onChange={e => setNewTransfer({...newTransfer, fromAccountId: e.target.value})}>
+                                                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">To Target Bank Account</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newTransfer.toAccountId} onChange={e => setNewTransfer({...newTransfer, toAccountId: e.target.value})}>
+                                                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <input type="text" placeholder="Note (Optional)..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newTransfer.note} onChange={e => setNewTransfer({...newTransfer, note: e.target.value})} />
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsTransferModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Execute Transfer</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Stock Modal */}
+                        {isStockModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Add Stock Investment Entry</h3>
+                                    <form onSubmit={handleAddStock} className="space-y-3">
+                                        <input type="text" autoFocus required placeholder="Stock Name (e.g. Reliance, TCS)..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newStock.name} onChange={e => setNewStock({...newStock, name: e.target.value})} />
+                                        <input type="number" step="0.01" required placeholder="Current Valuation (₹)" className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={newStock.valuation} onChange={e => setNewStock({...newStock, valuation: e.target.value})} />
+                                        <input type="text" placeholder="Notes / Quantity..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newStock.note} onChange={e => setNewStock({...newStock, note: e.target.value})} />
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsStockModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-emerald-800 text-white rounded font-medium">Save Holding</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Loan Modal */}
+                        {isLoanModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Add Institutional Loan / Credit Card</h3>
+                                    <form onSubmit={handleAddLoan} className="space-y-3">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Category Type</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-semibold focus:outline-navy-600" value={newLoan.loanType} onChange={e => setNewLoan({...newLoan, loanType: e.target.value})}>
+                                                <option value="bank">Bank Loan (Home, Auto, Personal)</option>
+                                                <option value="credit_card">Credit Card Liability</option>
+                                            </select>
+                                        </div>
+                                        <input type="text" required placeholder="Loan / Card Title..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newLoan.name} onChange={e => setNewLoan({...newLoan, name: e.target.value})} />
+                                        <input type="text" placeholder="Bank / Issuer Name..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newLoan.bankName} onChange={e => setNewLoan({...newLoan, bankName: e.target.value})} />
+                                        <input type="number" step="0.01" required placeholder="Outstanding Balance (₹)" className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={newLoan.amount} onChange={e => setNewLoan({...newLoan, amount: e.target.value})} />
+                                        <input type="number" step="0.01" placeholder="Monthly EMI (Optional)" className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newLoan.emi} onChange={e => setNewLoan({...newLoan, emi: e.target.value})} />
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsLoanModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Save Liability</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Savings Modal */}
+                        {isSavingsModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Add Savings Asset Entry</h3>
+                                    <form onSubmit={handleAddSavings} className="space-y-3">
+                                        <input type="text" autoFocus required placeholder="Savings Title (e.g. HDFC FD, Gold)..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newSavings.name} onChange={e => setNewSavings({...newSavings, name: e.target.value})} />
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Category</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-semibold focus:outline-navy-600" value={newSavings.category} onChange={e => setNewSavings({...newSavings, category: e.target.value})}>
+                                                <option value="Bank FD / Deposit">Bank Fixed Deposit (FD/RD)</option>
+                                                <option value="Mutual Funds / SIP">Mutual Funds / SIP</option>
+                                                <option value="Emergency Fund">Emergency Fund</option>
+                                                <option value="Gold / Silver">Gold / Precious Metals</option>
+                                                <option value="PPF / EPF / NPS">PPF / EPF / NPS</option>
+                                                <option value="Other Savings">Other Savings / Cash Deposit</option>
+                                            </select>
+                                        </div>
+                                        <input type="number" step="0.01" required placeholder="Valuation / Amount (₹)" className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={newSavings.amount} onChange={e => setNewSavings({...newSavings, amount: e.target.value})} />
+                                        <input type="text" placeholder="Note / Maturity details..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newSavings.note} onChange={e => setNewSavings({...newSavings, note: e.target.value})} />
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsSavingsModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-teal-800 text-white rounded font-medium">Save Entry</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Gear Opening Balance Modal */}
+                        {gearAccountModal && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-1">Configure {gearAccountModal.name}</h3>
+                                    <p className="text-xs text-classic-500 mb-4">Opening balance settings.</p>
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const val = e.target.elements.opVal.value;
+                                        const dtVal = e.target.elements.opDate.value;
+                                        handleUpdateOpeningBalance(gearAccountModal.id, val, dtVal);
+                                    }} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Opening Balance (₹)</label>
+                                            <input name="opVal" type="number" step="0.01" required defaultValue={gearAccountModal.openingBalance} className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Effective Opening Date</label>
+                                            <input name="opDate" type="date" required defaultValue={gearAccountModal.openingDate} className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" />
+                                        </div>
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setGearAccountModal(null)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Save Settings</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Task Modal */}
+                        {isTaskModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Add Task</h3>
+                                    <form onSubmit={handleAddTask} className="space-y-4">
+                                        <input type="text" autoFocus required placeholder="Task title..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} />
+                                        <div className="flex space-x-4 text-xs text-classic-700">
+                                            <label className="flex items-center space-x-1"><input type="radio" value="one-time" checked={newTask.type === 'one-time'} onChange={e => setNewTask({...newTask, type: e.target.value})} /><span>One-time</span></label>
+                                            <label className="flex items-center space-x-1"><input type="radio" value="recurring" checked={newTask.type === 'recurring'} onChange={e => setNewTask({...newTask, type: e.target.value})} /><span>Routine</span></label>
+                                        </div>
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Save</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Reminder Modal */}
+                        {isReminderModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Add Reminder</h3>
+                                    <form onSubmit={handleAddReminder} className="space-y-4">
+                                        <input type="text" autoFocus required placeholder="Reminder details..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newReminder.text} onChange={e => setNewReminder({...newReminder, text: e.target.value})} />
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsReminderModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Save</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Expense Modal */}
+                        {isExpenseModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Log Expense</h3>
+                                    <form onSubmit={handleAddExpense} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Amount (₹)</label>
+                                            <input type="number" step="0.01" required autoFocus placeholder="0.00" className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Description</label>
+                                            <input type="text" required placeholder="What was spent on?" className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newExpense.description} onChange={e => setNewExpense({...newExpense, description: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Select Bank Account</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm text-classic-800 focus:outline-navy-600" value={newExpense.accountId} onChange={e => setNewExpense({...newExpense, accountId: e.target.value})}>
+                                                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Record</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Debtors & Creditors Modal */}
+                        {isDebtorCreditorModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Add Debtor / Creditor</h3>
+                                    <form onSubmit={handleAddDC} className="space-y-3">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Entry Type</label>
+                                            <select className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-semibold focus:outline-navy-600" value={newDC.type} onChange={e => setNewDC({...newDC, type: e.target.value})}>
+                                                <option value="debtor">Debtor (Money to Take from Person)</option>
+                                                <option value="creditor">Creditor (Money to Give to Person)</option>
+                                            </select>
+                                        </div>
+                                        <input type="text" required placeholder="Person / Party Name..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newDC.name} onChange={e => setNewDC({...newDC, name: e.target.value})} />
+                                        <input type="number" step="0.01" required placeholder="Amount (₹)" className="w-full border border-classic-300 rounded px-3 py-2 text-sm font-bold focus:outline-navy-600" value={newDC.amount} onChange={e => setNewDC({...newDC, amount: e.target.value})} />
+                                        <input type="text" placeholder="Note / Reason..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newDC.note} onChange={e => setNewDC({...newDC, note: e.target.value})} />
+                                        <div>
+                                            <label className="block text-xs font-semibold text-classic-500 mb-1">Due Date</label>
+                                            <input type="date" required className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newDC.dueDate} onChange={e => setNewDC({...newDC, dueDate: e.target.value})} />
+                                        </div>
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsDebtorCreditorModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Save Entry</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Goal Modal */}
+                        {isGoalModalOpen && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-lg max-w-sm w-full shadow-lg border border-classic-200">
+                                    <h3 className="font-serif font-bold text-lg text-classic-900 mb-4">Set New Goal</h3>
+                                    <form onSubmit={handleAddGoal} className="space-y-4">
+                                        <input type="text" autoFocus required placeholder="Goal title..." className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newGoal.title} onChange={e => setNewGoal({...newGoal, title: e.target.value})} />
+                                        <input type="date" required className="w-full border border-classic-300 rounded px-3 py-2 text-sm focus:outline-navy-600" value={newGoal.targetDate} onChange={e => setNewGoal({...newGoal, targetDate: e.target.value})} />
+                                        <div className="flex justify-end space-x-2 pt-2">
+                                            <button type="button" onClick={() => setIsGoalModalOpen(false)} className="px-3 py-1.5 text-xs border rounded text-classic-600">Cancel</button>
+                                            <button type="submit" className="px-3 py-1.5 text-xs bg-navy-800 text-white rounded font-medium">Add Goal</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
