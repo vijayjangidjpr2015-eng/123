@@ -384,9 +384,9 @@
                             const text = await dailyRes.value.text();
                             try {
                                 const data = JSON.parse(text);
-                                if (data.expenses) setExpenses(data.expenses);
-                                if (data.tasks) setTasks(data.tasks);
-                                if (data.goals) setGoals(data.goals);
+                                if (data.expenses) setExpenses(data.expenses.map(e => ({ ...e, id: e.id || generateId() })));
+                                if (data.tasks) setTasks(data.tasks.map(t => ({ ...t, id: t.id || generateId() })));
+                                if (data.goals) setGoals(data.goals.map(g => ({ ...g, id: g.id || generateId() })));
                             } catch (e) {}
                         }
                     } catch (error) {
@@ -424,11 +424,17 @@
             const removedIds = useMemo(() => new Set(removedEntries.map(r => r.id)), [removedEntries]);
 
             const activeExpenses = useMemo(() => {
-                return expenses.filter(e => !excludedIds.includes(e.id) && !removedIds.has(e.id));
+                return expenses.filter(e => {
+                    const entryId = e.id || `${e.date}_${e.description}_${e.amount}`;
+                    return !excludedIds.includes(entryId) && !removedIds.has(entryId);
+                });
             }, [expenses, excludedIds, removedIds]);
 
             const activeBills = useMemo(() => {
-                return bills.filter(b => !excludedIds.includes(b.id) && !removedIds.has(b.id));
+                return bills.filter(b => {
+                    const entryId = b.id || `${b.date}_${b.title}_${b.amount}`;
+                    return !excludedIds.includes(entryId) && !removedIds.has(entryId);
+                });
             }, [bills, excludedIds, removedIds]);
 
             const activeTasks = useMemo(() => {
@@ -438,12 +444,17 @@
             // Helper to move entry from Master Data to "Entry to Remove"
             const moveToEntryToRemove = (entry, type = 'expense') => {
                 playClickSound();
+                const validId = entry.id || generateId();
                 const recordToRemove = {
                     ...entry,
+                    id: validId,
                     entryType: type,
                     removedAt: format(new Date(), 'yyyy-MM-dd HH:mm')
                 };
-                setRemovedEntries(prev => [...prev.filter(r => r.id !== entry.id), recordToRemove]);
+                if (!entry.id) {
+                    setExpenses(prev => prev.map(exp => exp === entry ? { ...exp, id: validId } : exp));
+                }
+                setRemovedEntries(prev => [...prev.filter(r => r.id !== validId), recordToRemove]);
             };
 
             const restoreEntryFromRemove = (id) => {
@@ -1737,160 +1748,165 @@
                             {/* MY WEDDING TAB */}
                             {}
                             {activeTab === 'wedding' && (
-                                <div className="space-y-6">
+                                <div className="space-y-6 max-w-4xl mx-auto">
+                                    {/* Top Header Banner */}
                                     <div className="p-6 rounded-2xl border border-rose-200 bg-rose-50/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                         <div>
                                             <h2 className="text-2xl font-serif font-bold text-slate-900 flex items-center gap-2">
                                                 <i className="fas fa-ring text-rose-600"></i> My Wedding Financial Planning
                                             </h2>
-                                            <p className="text-xs text-slate-600 mt-1">Calculates budget requirements against your auto-fetched Savings tab, auto-fetched Stock Portfolio, and planned loans.</p>
+                                            <p className="text-xs text-slate-600 mt-1">
+                                                Sequential step-by-step budget planning against your auto-fetched Savings, Stock Portfolio, and Loans.
+                                            </p>
                                         </div>
-                                        <div className="text-right bg-white p-4 rounded-xl border border-rose-200 shadow-xs min-w-[220px]">
-                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Remaining Shortfall</span>
+                                        <div className="text-right bg-white p-3.5 rounded-xl border border-rose-200 shadow-xs min-w-[200px]">
+                                            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Remaining Shortfall</span>
                                             <span className={`text-2xl font-bold ${weddingRemaining > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                                                 ₹{weddingRemaining.toFixed(2)}
                                             </span>
-                                            {weddingRemaining <= 0 && weddingReqNum > 0 && (
-                                                <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">✓ Target Fully Covered!</span>
-                                            )}
                                         </div>
                                     </div>
 
-                                    {/* Summary Stats Grid */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                                        <div className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs">
-                                            <p className="text-[10px] font-semibold uppercase text-slate-500">1. Required Budget</p>
-                                            <p className="text-xl font-bold text-slate-900 mt-1">₹{weddingReqNum.toFixed(2)}</p>
-                                        </div>
-                                        <div className="p-3.5 rounded-xl border border-teal-200 bg-teal-50/60 shadow-2xs">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[10px] font-semibold uppercase text-teal-800">2. Savings</p>
-                                                <span className="text-[9px] bg-teal-200 text-teal-900 px-1.5 py-0.2 rounded font-bold">Auto</span>
-                                            </div>
-                                            <p className="text-xl font-bold text-teal-900 mt-1">₹{weddingSavingsNum.toFixed(2)}</p>
-                                        </div>
-                                        <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60 shadow-2xs">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[10px] font-semibold uppercase text-emerald-800">3. Stocks</p>
-                                                <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-bold">Auto</span>
-                                            </div>
-                                            <p className="text-xl font-bold text-emerald-900 mt-1">₹{weddingStocksNum.toFixed(2)}</p>
-                                        </div>
-                                        <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 shadow-2xs">
-                                            <p className="text-[10px] font-semibold uppercase text-slate-600">4. Loan Planned</p>
-                                            <p className="text-xl font-bold text-slate-900 mt-1">₹{weddingLoanNum.toFixed(2)}</p>
-                                        </div>
-                                        <div className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/60 shadow-2xs">
-                                            <p className="text-[10px] font-semibold uppercase text-indigo-800">5. Total Arranged</p>
-                                            <p className="text-xl font-bold text-indigo-950 mt-1">₹{weddingTotalArranged.toFixed(2)}</p>
-                                        </div>
-                                    </div>
-
-                                    {/* Funding Coverage Progress */}
-                                    {weddingReqNum > 0 && (
-                                        <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs">
-                                            <div className="flex justify-between items-center text-xs font-semibold text-slate-700 mb-1.5">
-                                                <span>Wedding Budget Coverage</span>
-                                                <span>{weddingProgress}% Arranged</span>
-                                            </div>
-                                            <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden">
-                                                <div 
-                                                    className={`h-full transition-all duration-300 ${weddingRemaining <= 0 ? 'bg-emerald-600' : 'bg-slate-900'}`} 
-                                                    style={{ width: `${weddingProgress}%` }}
-                                                ></div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Inputs Ledger */}
-                                    <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-5">
-                                        <h3 className="font-serif font-bold text-lg text-slate-900 pb-2 border-b border-slate-200">
-                                            Wedding Budget Parameters
+                                    {/* Line-by-Line Sequential Parameters */}
+                                    <div className="p-6 rounded-2xl border border-slate-200 bg-white shadow-2xs space-y-4">
+                                        <h3 className="font-serif font-bold text-lg text-slate-900 pb-3 border-b border-slate-200 flex items-center gap-2">
+                                            <i className="fas fa-list-ol text-slate-700"></i> Sequential Budget Breakdown
                                         </h3>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div>
-                                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                                                    1. Wedding Amount Required (₹)
-                                                </label>
-                                                <input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    placeholder="Enter total estimated budget..." 
-                                                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-base font-bold text-slate-900 focus:outline-slate-900"
-                                                    value={weddingData.required} 
-                                                    onChange={e => setWeddingData({ ...weddingData, required: e.target.value })}
-                                                />
-                                                <p className="text-[11px] text-slate-500 mt-1">Total projected cost for venue, catering, decor, and ceremonies.</p>
+                                        <div className="space-y-3">
+                                            {/* Line Item 1: Total Required Budget */}
+                                            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="sm:w-1/2">
+                                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-800">
+                                                        1. Total Wedding Amount Required (₹)
+                                                    </label>
+                                                    <p className="text-[11px] text-slate-500 mt-0.5">Total estimated cost for venue, catering, decor, and ceremonies.</p>
+                                                </div>
+                                                <div className="sm:w-1/2">
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.01" 
+                                                        placeholder="Enter total estimated budget..." 
+                                                        className="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-base font-bold text-slate-900 focus:outline-slate-900 bg-white shadow-2xs"
+                                                        value={weddingData.required} 
+                                                        onChange={e => setWeddingData({ ...weddingData, required: e.target.value })}
+                                                    />
+                                                </div>
                                             </div>
 
-                                            <div>
-                                                <label className="block text-xs font-bold uppercase tracking-wider text-teal-800 mb-1 flex items-center justify-between">
-                                                    <span>2. Savings (From Savings Tab)</span>
-                                                    <span className="text-[10px] bg-teal-100 text-teal-800 px-2 py-0.5 rounded font-bold"><i className="fas fa-sync-alt mr-1"></i>Auto-Synced</span>
-                                                </label>
-                                                <div className="w-full border border-teal-200 bg-teal-50/50 rounded-lg px-3.5 py-2 text-base font-bold text-teal-950 flex justify-between items-center">
-                                                    <span>₹{weddingSavingsNum.toFixed(2)}</span>
+                                            {/* Line Item 2: Savings (Auto-Synced) */}
+                                            <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="sm:w-1/2">
+                                                    <div className="flex items-center gap-2">
+                                                        <label className="block text-xs font-bold uppercase tracking-wider text-teal-900">
+                                                            2. Available Savings (From Savings Tab)
+                                                        </label>
+                                                        <span className="text-[9px] bg-teal-200 text-teal-900 px-1.5 py-0.2 rounded font-bold">Auto</span>
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-500 mt-0.5">Automatically synced total from your logged Savings & Deposits.</p>
+                                                </div>
+                                                <div className="sm:w-1/2 flex items-center justify-between bg-white border border-teal-200 px-3.5 py-2 rounded-lg shadow-2xs">
+                                                    <span className="text-base font-bold text-teal-950">₹{weddingSavingsNum.toFixed(2)}</span>
                                                     <button onClick={() => handleTabClick('savings')} className="text-xs text-teal-800 underline hover:text-teal-900 font-sans font-medium">Manage Savings →</button>
                                                 </div>
-                                                <p className="text-[11px] text-slate-500 mt-1">Automatically computed from entries in your Savings tab.</p>
                                             </div>
 
-                                            <div>
-                                                <label className="block text-xs font-bold uppercase tracking-wider text-emerald-800 mb-1 flex items-center justify-between">
-                                                    <span>3. Stock Portfolio (From Stocks Tab)</span>
-                                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold"><i className="fas fa-sync-alt mr-1"></i>Auto-Synced</span>
-                                                </label>
-                                                <div className="w-full border border-emerald-200 bg-emerald-50/50 rounded-lg px-3.5 py-2 text-base font-bold text-emerald-950 flex justify-between items-center">
-                                                    <span>₹{weddingStocksNum.toFixed(2)}</span>
+                                            {/* Line Item 3: Stock Portfolio (Auto-Synced) */}
+                                            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="sm:w-1/2">
+                                                    <div className="flex items-center gap-2">
+                                                        <label className="block text-xs font-bold uppercase tracking-wider text-emerald-900">
+                                                            3. Stock Portfolio (From Stocks Tab)
+                                                        </label>
+                                                        <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-bold">Auto</span>
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-500 mt-0.5">Automatically synced market valuation from your Stock Portfolio.</p>
+                                                </div>
+                                                <div className="sm:w-1/2 flex items-center justify-between bg-white border border-emerald-200 px-3.5 py-2 rounded-lg shadow-2xs">
+                                                    <span className="text-base font-bold text-emerald-950">₹{weddingStocksNum.toFixed(2)}</span>
                                                     <button onClick={() => handleTabClick('stocks')} className="text-xs text-emerald-800 underline hover:text-emerald-900 font-sans font-medium">Manage Stocks →</button>
                                                 </div>
-                                                <p className="text-[11px] text-slate-500 mt-1">Automatically computed from entries in your Stock Portfolio tab.</p>
                                             </div>
 
-                                            <div>
-                                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                                                    4. Wedding Loan Planned (₹)
-                                                </label>
-                                                <input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    placeholder="Enter loan amount to be taken..." 
-                                                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-base font-bold text-slate-900 focus:outline-slate-900"
-                                                    value={weddingData.loan} 
-                                                    onChange={e => setWeddingData({ ...weddingData, loan: e.target.value })}
-                                                />
-                                                <p className="text-[11px] text-slate-500 mt-1">Estimated bank or personal loan to finance the wedding.</p>
+                                            {/* Line Item 4: Wedding Loan Planned */}
+                                            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="sm:w-1/2">
+                                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-800">
+                                                        4. Wedding Loan Planned (₹)
+                                                    </label>
+                                                    <p className="text-[11px] text-slate-500 mt-0.5">Estimated bank or personal loan amount to finance wedding costs.</p>
+                                                </div>
+                                                <div className="sm:w-1/2">
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.01" 
+                                                        placeholder="Enter loan amount to be taken..." 
+                                                        className="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-base font-bold text-slate-900 focus:outline-slate-900 bg-white shadow-2xs"
+                                                        value={weddingData.loan} 
+                                                        onChange={e => setWeddingData({ ...weddingData, loan: e.target.value })}
+                                                    />
+                                                </div>
                                             </div>
 
-                                            <div className="md:col-span-2">
-                                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                                                    5. Additional Contributions / Other (₹)
-                                                </label>
-                                                <input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    placeholder="Enter any other contributions..." 
-                                                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-base font-bold text-slate-900 focus:outline-slate-900"
-                                                    value={weddingData.other} 
-                                                    onChange={e => setWeddingData({ ...weddingData, other: e.target.value })}
-                                                />
-                                                <p className="text-[11px] text-slate-500 mt-1">Family gifts, secondary income, or other expected funds.</p>
+                                            {/* Line Item 5: Additional Contributions */}
+                                            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="sm:w-1/2">
+                                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-800">
+                                                        5. Additional Contributions / Other (₹)
+                                                    </label>
+                                                    <p className="text-[11px] text-slate-500 mt-0.5">Family gifts, secondary income, or expected cash reserves.</p>
+                                                </div>
+                                                <div className="sm:w-1/2">
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.01" 
+                                                        placeholder="Enter any other contributions..." 
+                                                        className="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-base font-bold text-slate-900 focus:outline-slate-900 bg-white shadow-2xs"
+                                                        value={weddingData.other} 
+                                                        onChange={e => setWeddingData({ ...weddingData, other: e.target.value })}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div className={`p-4 rounded-lg border ${weddingRemaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} flex justify-between items-center`}>
-                                            <div>
-                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 block">Calculation Summary</span>
-                                                <span className="text-sm font-semibold text-slate-900">
-                                                    {weddingRemaining > 0 
-                                                        ? `Shortfall of ₹${weddingRemaining.toFixed(2)} still needs to be arranged.` 
-                                                        : `Surplus of ₹${Math.abs(weddingRemaining).toFixed(2)} available over requirement!`}
+                                        {/* Line Item 6: Total Arranged vs Target Summary */}
+                                        <div className="pt-3 border-t border-slate-200 space-y-3">
+                                            <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/60 flex justify-between items-center">
+                                                <div>
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-900 block">Total Funds Arranged</span>
+                                                    <span className="text-[11px] text-indigo-700">(Savings + Stocks + Planned Loan + Other)</span>
+                                                </div>
+                                                <span className="text-2xl font-bold text-indigo-950">₹{weddingTotalArranged.toFixed(2)}</span>
+                                            </div>
+
+                                            {weddingReqNum > 0 && (
+                                                <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs">
+                                                    <div className="flex justify-between items-center text-xs font-semibold text-slate-700 mb-2">
+                                                        <span>Funding Coverage Progress</span>
+                                                        <span>{weddingProgress}% Arranged</span>
+                                                    </div>
+                                                    <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className={`h-full transition-all duration-300 ${weddingRemaining <= 0 ? 'bg-emerald-600' : 'bg-slate-900'}`} 
+                                                            style={{ width: `${weddingProgress}%` }}
+                                                        ></div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className={`p-4 rounded-xl border ${weddingRemaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} flex justify-between items-center`}>
+                                                <div>
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700 block">Final Budget Status</span>
+                                                    <span className="text-sm font-semibold text-slate-900">
+                                                        {weddingRemaining > 0 
+                                                            ? `Shortfall of ₹${weddingRemaining.toFixed(2)} still needs to be arranged.` 
+                                                            : `Surplus of ₹${Math.abs(weddingRemaining).toFixed(2)} available over requirement!`}
+                                                    </span>
+                                                </div>
+                                                <span className={`text-xl font-bold ${weddingRemaining > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
+                                                    ₹{weddingRemaining.toFixed(2)}
                                                 </span>
                                             </div>
-                                            <span className={`text-xl font-bold ${weddingRemaining > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
-                                                ₹{weddingRemaining.toFixed(2)}
-                                            </span>
                                         </div>
                                     </div>
                                 </div>
