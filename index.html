@@ -108,6 +108,35 @@
 <body class="antialiased text-classic-800 font-sans bg-slate-100/80 selection:bg-slate-800 selection:text-white">
     <div id="root"></div>
 
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAZBoopm6mdR7frpjZrlfztcGKnSrHj1kg",
+            authDomain: "metal-sorter-469409-c8.firebaseapp.com",
+            projectId: "metal-sorter-469409-c8",
+            storageBucket: "metal-sorter-469409-c8.firebasestorage.app",
+            messagingSenderId: "142174316258",
+            appId: "1:142174316258:web:df72f236da283cd33620bb",
+            measurementId: "G-CM01XD8CDH"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        getAnalytics(app);
+        
+        // Expose Firebase tools to the global window for React/Babel to use
+        window.firebaseDB = getFirestore(app);
+        window.firebaseAuth = getAuth(app);
+        window.signInAnonymously = signInAnonymously;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.firebaseDoc = doc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseOnSnapshot = onSnapshot;
+    </script>
+
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
         
@@ -311,6 +340,7 @@
             const [isSyncing, setIsSyncing] = useState(false);
             const [isTriggeringAlerts, setIsTriggeringAlerts] = useState(false);
             const [alertNotice, setAlertNotice] = useState(null);
+            const [hasLoadedFromDB, setHasLoadedFromDB] = useState(false);
 
             const synthRef = useRef(null);
             
@@ -370,33 +400,59 @@
             const selectedDateStr = dateStr(selectedDate);
 
             useEffect(() => {
-                const load = (key, setter) => {
-                    const data = localStorage.getItem(`tracker_${key}`);
-                    if (data) {
-                        try { setter(JSON.parse(data)); } catch(e){}
+            let unsubscribe;
+            const initFirebase = async () => {
+                // Wait briefly for the module script variables to attach to the window
+                while (!window.firebaseDB) {
+                    await new Promise(r => setTimeout(r, 50));
+                }
+                try {
+                    let user = window.firebaseAuth.currentUser;
+                    if (!user) {
+                        // Skip the custom token check and use Anonymous Auth directly for your custom Firebase project
+                        const cred = await window.signInAnonymously(window.firebaseAuth);
+                        user = cred.user;
+                    }
+                    
+                    const userId = user.uid;
+                        const appId = typeof __app_id !== 'undefined' ? __app_id : 'classic-ledger';
+                        const docRef = window.firebaseDoc(window.firebaseDB, 'artifacts', appId, 'users', userId, 'data', 'state');
+                        
+                        // Listen in real-time to Firestore doc changes
+                        unsubscribe = window.firebaseOnSnapshot(docRef, (docSnap) => {
+                            if (docSnap.exists()) {
+                                const data = docSnap.data();
+                                if (data.tasks) setTasks(data.tasks);
+                                if (data.reminders) setReminders(data.reminders);
+                                if (data.expenses) setExpenses(data.expenses);
+                                if (data.budgetMap) setBudgetMap(data.budgetMap);
+                                if (data.bills) setBills(data.bills);
+                                if (data.goals) setGoals(data.goals);
+                                if (data.accounts) setAccounts(data.accounts);
+                                if (data.debtors) setDebtors(data.debtors);
+                                if (data.excludedIds) setExcludedIds(data.excludedIds);
+                                if (data.heatmapMin) setHeatmapMin(data.heatmapMin);
+                                if (data.heatmapMax) setHeatmapMax(data.heatmapMax);
+                                if (data.incomes) setIncomes(data.incomes);
+                                if (data.transfers) setTransfers(data.transfers);
+                                if (data.stocks) setStocks(data.stocks);
+                                if (data.loans) setLoans(data.loans);
+                                if (data.savingsList) setSavingsList(data.savingsList);
+                                if (data.weddingData) setWeddingData(data.weddingData);
+                                if (data.removedEntries) setRemovedEntries(data.removedEntries);
+                                if (data.habits) setHabits(data.habits);
+                                if (data.habitLogs) setHabitLogs(data.habitLogs);
+                                if (data.habitNotes) setHabitNotes(data.habitNotes);
+                            }
+                            setHasLoadedFromDB(true);
+                        }, (err) => console.error("Firestore sync error:", err));
+                    } catch (err) {
+                        console.error("Firebase auth/load error:", err);
+                        setHasLoadedFromDB(true); // Allow interactions even if offline
                     }
                 };
-                load('tasks', setTasks);
-                load('reminders', setReminders);
-                load('expenses', setExpenses);
-                load('budgetMap', setBudgetMap);
-                load('bills', setBills);
-                load('goals', setGoals);
-                load('accounts', setAccounts);
-                load('debtors', setDebtors);
-                load('excludedIds', setExcludedIds);
-                load('heatmapMin', setHeatmapMin);
-                load('heatmapMax', setHeatmapMax);
-                load('incomes', setIncomes);
-                load('transfers', setTransfers);
-                load('stocks', setStocks);
-                load('loans', setLoans);
-                load('savingsList', setSavingsList);
-                load('weddingData', setWeddingData);
-                load('removedEntries', setRemovedEntries);
-                load('habits', setHabits);
-                load('habitLogs', setHabitLogs);
-                load('habitNotes', setHabitNotes);
+                
+                initFirebase();
 
                 const fetchSheetData = async () => {
                     setIsSyncing(true);
@@ -419,32 +475,26 @@
                     }
                 };
                 fetchSheetData();
+
+                return () => { if (unsubscribe) unsubscribe(); };
             }, []);
 
             useEffect(() => {
-                const save = (key, data) => localStorage.setItem(`tracker_${key}`, JSON.stringify(data));
-                save('tasks', tasks);
-                save('reminders', reminders);
-                save('expenses', expenses);
-                save('budgetMap', budgetMap);
-                save('bills', bills);
-                save('goals', goals);
-                save('accounts', accounts);
-                save('debtors', debtors);
-                save('excludedIds', excludedIds);
-                save('heatmapMin', heatmapMin);
-                save('heatmapMax', heatmapMax);
-                save('incomes', incomes);
-                save('transfers', transfers);
-                save('stocks', stocks);
-                save('loans', loans);
-                save('savingsList', savingsList);
-                save('weddingData', weddingData);
-                save('removedEntries', removedEntries);
-                save('habits', habits);
-                save('habitLogs', habitLogs);
-                save('habitNotes', habitNotes);
-            }, [tasks, reminders, expenses, budgetMap, bills, goals, accounts, debtors, excludedIds, heatmapMin, heatmapMax, incomes, transfers, stocks, loans, savingsList, weddingData, removedEntries, habits, habitLogs, habitNotes]);
+                // Prevent saving default empty state back to DB before the real data is fetched
+                if (!hasLoadedFromDB || !window.firebaseDB || !window.firebaseAuth?.currentUser) return;
+                
+                const userId = window.firebaseAuth.currentUser.uid;
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'classic-ledger';
+                const docRef = window.firebaseDoc(window.firebaseDB, 'artifacts', appId, 'users', userId, 'data', 'state');
+                
+                const saveData = {
+                    tasks, reminders, expenses, budgetMap, bills, goals, accounts, debtors, excludedIds,
+                    heatmapMin, heatmapMax, incomes, transfers, stocks, loans, savingsList, weddingData,
+                    removedEntries, habits, habitLogs, habitNotes
+                };
+                
+                window.firebaseSetDoc(docRef, saveData, { merge: true }).catch(console.error);
+            }, [hasLoadedFromDB, tasks, reminders, expenses, budgetMap, bills, goals, accounts, debtors, excludedIds, heatmapMin, heatmapMax, incomes, transfers, stocks, loans, savingsList, weddingData, removedEntries, habits, habitLogs, habitNotes]);
 
             // Set of removed identifiers
             const removedKeysSet = useMemo(() => {
