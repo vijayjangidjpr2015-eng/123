@@ -291,6 +291,7 @@
             const [isSavingsModalOpen, setIsSavingsModalOpen] = useState(false);
             const [isHabitModalOpen, setIsHabitModalOpen] = useState(false);
             const [gearAccountModal, setGearAccountModal] = useState(null);
+            const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
             // Forms
             const [newTask, setNewTask] = useState({ title: '', type: 'one-time' });
@@ -504,7 +505,7 @@
                         const itemKey = getEntryKey(e);
                         return !removedKeysSet.has(e.id) && !removedKeysSet.has(itemKey);
                     })
-                    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+                    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
             }, [expenses, removedKeysSet]);
 
             const availableMonths = useMemo(() => {
@@ -609,11 +610,12 @@
                     const accPaidBills = activeBills.filter(b => (b.accountId || 'hdfc') === acc.id && startOfDay(b.date) >= openDate)
                         .reduce((sum, b) => sum + (Number(b.amount) * (b.paidMonths || []).length), 0);
 
-                    const currentBalance = Number(acc.openingBalance || 0) + totalIncomes + totalTransfersIn - totalTransfersOut - totalDeductedExpenses - accPaidBills;
+                    const adjustment = Number(acc.adjustment || 0);
+                    const currentBalance = Number(acc.openingBalance || 0) + totalIncomes + totalTransfersIn - totalTransfersOut - totalDeductedExpenses - accPaidBills + adjustment;
                     const upcomingBills = monthlyBills.filter(b => !b.isPaidForMonth && (b.accountId || 'hdfc') === acc.id).reduce((sum, b) => sum + Number(b.amount), 0);
                     const projectedBalance = currentBalance - upcomingBills;
 
-                    return { ...acc, currentBalance, projectedBalance, totalIncomes, totalTransfersIn, totalTransfersOut, totalDeductedExpenses, totalPaidBills: accPaidBills };
+                    return { ...acc, currentBalance, projectedBalance, totalIncomes, totalTransfersIn, totalTransfersOut, totalDeductedExpenses, totalPaidBills: accPaidBills, adjustment };
                 });
             }, [accounts, incomes, transfers, activeExpenses, activeBills, monthlyBills]);
 
@@ -706,9 +708,29 @@
             const prevMonth = () => { playPageFlipSound(); setCurrentDate(subMonths(currentDate, 1)); };
             const onDateClick = (day) => { playPageFlipSound(); setSelectedDate(day); };
 
-            const handleUpdateOpeningBalance = (accId, val, dtVal) => {
+            const handleUpdateOpeningBalance = (accId, val, dtVal, targetVal) => {
                 playClickSound();
-                setAccounts(accounts.map(a => a.id === accId ? { ...a, openingBalance: parseFloat(val) || 0, openingDate: dtVal } : a));
+                setAccounts(accounts.map(a => {
+                    if (a.id === accId) {
+                        let newAdj = a.adjustment || 0;
+                        if (targetVal !== '' && targetVal !== undefined && targetVal !== null && !isNaN(parseFloat(targetVal))) {
+                            const target = parseFloat(targetVal);
+                            const openDate = startOfDay(dtVal || a.openingDate || new Date());
+                            const totalIncomes = incomes.filter(i => (i.accountId || 'hdfc') === a.id).reduce((sum, i) => sum + Number(i.amount), 0);
+                            const totalTransfersIn = transfers.filter(t => t.toAccountId === a.id).reduce((sum, t) => sum + Number(t.amount), 0);
+                            const totalTransfersOut = transfers.filter(t => t.fromAccountId === a.id).reduce((sum, t) => sum + Number(t.amount), 0);
+                            const accExpenses = activeExpenses.filter(e => (e.accountId || 'hdfc') === a.id && startOfDay(e.date) >= openDate);
+                            const totalDeductedExpenses = accExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+                            const accPaidBills = activeBills.filter(b => (b.accountId || 'hdfc') === a.id && startOfDay(b.date) >= openDate)
+                                .reduce((sum, b) => sum + (Number(b.amount) * (b.paidMonths || []).length), 0);
+                            
+                            const baseBalance = (parseFloat(val) || 0) + totalIncomes + totalTransfersIn - totalTransfersOut - totalDeductedExpenses - accPaidBills;
+                            newAdj = target - baseBalance;
+                        }
+                        return { ...a, openingBalance: parseFloat(val) || 0, openingDate: dtVal, adjustment: newAdj };
+                    }
+                    return a;
+                }));
                 setGearAccountModal(null);
             };
 
@@ -728,6 +750,18 @@
                 setIsSavingsModalOpen(false);
             };
             const deleteSavings = (id) => { playClickSound(); setSavingsList(savingsList.filter(s => s.id !== id)); };
+
+            const handleResetAllBanks = () => {
+                playClickSound();
+                // Reset all bank accounts to 0 opening balance and 0 adjustment
+                setAccounts(accounts.map(a => ({ ...a, openingBalance: 0, adjustment: 0 })));
+                // Clear all transactional data feeding the inflow and outflow
+                setIncomes([]);
+                setTransfers([]);
+                setExpenses([]);
+                setBills([]);
+                setIsResetModalOpen(false);
+            };
 
             const handleAddTask = (e) => {
                 e.preventDefault();
@@ -1543,6 +1577,9 @@
                                             <p className="text-xs text-slate-400 mt-1">Net accumulated balance across all connected accounts.</p>
                                         </div>
                                         <div className="flex items-center gap-3">
+                                            <button onClick={() => setIsResetModalOpen(true)} className="bg-rose-600 hover:bg-rose-700 text-white font-medium text-xs px-4 py-2.5 rounded-lg transition-all shadow-xs flex items-center gap-2">
+                                                <i className="fas fa-exclamation-triangle text-xs"></i> Reset All
+                                            </button>
                                             <button onClick={() => setIsIncomeModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs px-4 py-2.5 rounded-lg transition-all shadow-xs flex items-center gap-2">
                                                 <i className="fas fa-plus-circle text-xs"></i> Add Income
                                             </button>
@@ -1580,6 +1617,12 @@
                                                     <div className="flex justify-between">
                                                         <span>Outflow (Expenses/Bills):</span>
                                                         <span className="font-semibold text-rose-600">-₹{(acc.totalDeductedExpenses + acc.totalPaidBills + acc.totalTransfersOut).toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Adjustment:</span>
+                                                        <span className={`font-semibold ${acc.adjustment >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                                            {acc.adjustment > 0 ? '+' : ''}₹{(acc.adjustment || 0).toFixed(2)}
+                                                        </span>
                                                     </div>
                                                     <div className="flex justify-between font-bold text-slate-900 pt-2 border-t border-slate-100">
                                                         <span>Projected Balance:</span>
@@ -2145,7 +2188,7 @@
                                     <div className="flex justify-between items-center border-b border-slate-200 pb-3">
                                         <div>
                                             <h2 className="text-2xl font-serif font-bold text-slate-900">Master Data Ledger</h2>
-                                            <p className="text-xs text-slate-500 mt-0.5">Sorted chronologically (Oldest to Latest). Move any entry to "Entry to Remove" to permanently exclude it.</p>
+                                            <p className="text-xs text-slate-500 mt-0.5">Sorted chronologically (Latest to Oldest). Move any entry to "Entry to Remove" to permanently exclude it.</p>
                                         </div>
                                         <select className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white focus:outline-slate-900" value={dataMonthFilter} onChange={e => setDataMonthFilter(e.target.value)}>
                                             <option value="all">All Months</option>
@@ -2471,15 +2514,50 @@
                                         e.preventDefault();
                                         const val = e.target.elements.opVal.value;
                                         const dtVal = e.target.elements.opDate.value;
-                                        handleUpdateOpeningBalance(gearAccountModal.id, val, dtVal);
+                                        const targetVal = e.target.elements.adjTarget.value;
+                                        handleUpdateOpeningBalance(gearAccountModal.id, val, dtVal, targetVal);
                                     }} className="space-y-4">
-                                        <input name="opVal" type="number" step="0.01" required defaultValue={gearAccountModal.openingBalance} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-slate-900" />
-                                        <input name="opDate" type="date" required defaultValue={gearAccountModal.openingDate} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-slate-900" />
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-500 uppercase">Opening Balance</label>
+                                            <input name="opVal" type="number" step="0.01" required defaultValue={gearAccountModal.openingBalance} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-slate-900" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-500 uppercase">Opening Date</label>
+                                            <input name="opDate" type="date" required defaultValue={gearAccountModal.openingDate} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-slate-900" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-500 uppercase">Target Balance (Adjust Balance 2)</label>
+                                            <input name="adjTarget" type="number" step="0.01" placeholder="Leave empty to keep current adjustment" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-slate-900" />
+                                        </div>
                                         <div className="flex justify-end space-x-2 pt-2">
                                             <button type="button" onClick={() => setGearAccountModal(null)} className="px-3.5 py-2 text-xs border border-slate-300 rounded-lg text-slate-600">Cancel</button>
                                             <button type="submit" className="px-3.5 py-2 text-xs bg-slate-900 text-white rounded-lg font-medium">Save Settings</button>
                                         </div>
                                     </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Reset Banks Warning Modal */}
+                        {isResetModalOpen && (
+                            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-2xl max-w-sm w-full shadow-2xl border border-rose-200">
+                                    <div className="flex items-center gap-3 mb-4 text-rose-600">
+                                        <i className="fas fa-exclamation-triangle text-2xl"></i>
+                                        <h3 className="font-serif font-bold text-lg text-slate-900">Critical Warning</h3>
+                                    </div>
+                                    <p className="text-sm text-slate-700 mb-4 font-medium leading-relaxed">
+                                        Are you absolutely sure? Pressing this button will make everything zero. 
+                                        Every bank account balance, all inflow/outflow history, adjustments, and projected balances will be permanently erased and set to <strong className="text-slate-900">₹0.00</strong>.
+                                    </p>
+                                    <div className="flex justify-end space-x-3 pt-2 border-t border-slate-100 mt-4">
+                                        <button type="button" onClick={() => setIsResetModalOpen(false)} className="px-4 py-2 text-xs border border-slate-300 hover:bg-slate-50 rounded-lg text-slate-700 font-semibold transition-all">
+                                            Cancel
+                                        </button>
+                                        <button type="button" onClick={handleResetAllBanks} className="px-4 py-2 text-xs bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold shadow-md transition-all">
+                                            Yes, Make Everything Zero
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}
