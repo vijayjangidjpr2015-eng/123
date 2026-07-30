@@ -330,6 +330,9 @@
             const [heatmapMin, setHeatmapMin] = useState(300);
             const [heatmapMax, setHeatmapMax] = useState(5000);
 
+            const [tinyXpMin, setTinyXpMin] = useState(1);
+            const [tinyXpMax, setTinyXpMax] = useState(50);
+
             // Modals
             const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
             const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
@@ -1288,6 +1291,7 @@
                                 <div className="flex overflow-x-auto gap-1.5 w-full whitespace-nowrap scroll-smooth snap-x custom-scrollbar pb-1">
                                     {[
                                         { id: 'expenses', label: 'Expenses', icon: 'fa-receipt' },
+                                        { id: 'tinyxp', label: 'Tiny XP', icon: 'fa-search-dollar' },
                                         { id: 'habits', label: 'Tracking Habits', icon: 'fa-fire' },
                                         { id: 'balance', label: 'Bank Balance', icon: 'fa-wallet' },
                                         { id: 'debtors', label: 'Debtors', icon: 'fa-hand-holding-usd' },
@@ -1325,7 +1329,7 @@
                         </div>
 
                         {/* Calendar Widget with Heatmap Sliders for Expenses & Budget */}
-                        {['expenses', 'budget'].includes(activeTab) && (
+                        {['expenses', 'budget', 'tinyxp'].includes(activeTab) && (
                             <div className="mb-8 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
                                 <div className="flex justify-between items-center px-4 py-3 bg-slate-100/80 border-b border-slate-200">
                                     <h2 className="font-serif font-bold text-base text-slate-900">
@@ -1657,7 +1661,7 @@
                                                                     </div>
                                                                     <div className="flex items-center space-x-2">
                                                                         <span className="text-sm font-bold text-slate-900">₹{Number(expense.amount).toFixed(2)}</span>
-                                                                        <button onClick={() => deleteExpense(expense.id)} className="text-slate-300 hover:text-rose-600 text-xs opacity-0 group-hover:opacity-100">✕</button>
+                                                                        <button onClick={() => moveToEntryToRemove(expense, 'expense')} className="text-slate-300 hover:text-rose-600 text-xs opacity-0 group-hover:opacity-100">✕</button>
                                                                     </div>
                                                                 </div>
 
@@ -1674,6 +1678,108 @@
                                     </div>
                                 </div>
                             )}
+
+                            {/* TINY XP TAB */}
+                            {activeTab === 'tinyxp' && (() => {
+                                const tinyXpExpenses = monthExpenses
+                                    .filter(e => {
+                                        const amt = Number(e.amount);
+                                        return amt >= tinyXpMin && amt <= tinyXpMax;
+                                    })
+                                    .sort((a, b) => b.date.localeCompare(a.date));
+
+                                const tinyXpTotal = tinyXpExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+                                const tinyXpPercent = monthlySpend > 0 ? ((tinyXpTotal / monthlySpend) * 100) : 0;
+
+                                return (
+                                    <div className="space-y-6">
+                                        <div className="p-6 rounded-2xl border border-indigo-200 bg-indigo-50/60 shadow-xs">
+                                            <h2 className="font-serif font-bold text-2xl text-indigo-950 mb-1 flex items-center gap-2">
+                                                <i className="fas fa-search-dollar text-indigo-600"></i> Tiny Expenses Analysis
+                                            </h2>
+                                            <p className="text-xs text-indigo-800/80 mb-6 font-medium">Use the sliders to define your target expense range and see how smaller transactions add up in {format(selectedDate, 'MMMM yyyy')}.</p>
+                                            
+                                            <div className="flex flex-col md:flex-row items-center gap-6">
+                                                <div className="flex-1 w-full bg-white p-4 rounded-xl border border-indigo-100 shadow-2xs">
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 block">Minimum Threshold (₹)</label>
+                                                    <div className="flex items-center gap-4">
+                                                        <input type="number" value={tinyXpMin} onChange={(e) => setTinyXpMin(Number(e.target.value))} className="w-24 border border-slate-300 rounded-lg px-3 py-1.5 font-bold text-slate-900 focus:outline-indigo-500 text-base" />
+                                                        <input type="range" min="0" max="1000" step="1" value={tinyXpMin} onChange={(e) => setTinyXpMin(Number(e.target.value))} className="w-full accent-indigo-600" />
+                                                    </div>
+                                                </div>
+                                                <div className="flex-1 w-full bg-white p-4 rounded-xl border border-indigo-100 shadow-2xs">
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 block">Maximum Threshold (₹)</label>
+                                                    <div className="flex items-center gap-4">
+                                                        <input type="number" value={tinyXpMax} onChange={(e) => setTinyXpMax(Number(e.target.value))} className="w-24 border border-slate-300 rounded-lg px-3 py-1.5 font-bold text-slate-900 focus:outline-indigo-500 text-base" />
+                                                        <input type="range" min="1" max="5000" step="1" value={tinyXpMax} onChange={(e) => setTinyXpMax(Number(e.target.value))} className="w-full accent-indigo-600" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                            <div className="p-5 rounded-xl border border-amber-200 bg-amber-50/60 shadow-xs flex flex-col justify-center">
+                                                <p className="text-[10px] font-bold uppercase text-amber-900 tracking-wider">Filtered Tiny XP Total</p>
+                                                <p className="text-3xl font-black text-amber-950 mt-1">₹{tinyXpTotal.toFixed(2)}</p>
+                                                <p className="text-xs text-amber-800 mt-1">{tinyXpExpenses.length} transactions found</p>
+                                            </div>
+                                            <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/70 shadow-xs flex flex-col justify-center">
+                                                <p className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Total Monthly Spend</p>
+                                                <p className="text-3xl font-black text-slate-900 mt-1">₹{monthlySpend.toFixed(2)}</p>
+                                                <p className="text-xs text-slate-500 mt-1">For {format(selectedDate, 'MMMM yyyy')}</p>
+                                            </div>
+                                            <div className="p-5 rounded-xl border border-emerald-200 bg-emerald-50/60 shadow-xs flex flex-col justify-center">
+                                                <div className="flex justify-between items-end mb-2">
+                                                    <p className="text-[10px] font-bold uppercase text-emerald-900 tracking-wider">Impact Percentage</p>
+                                                    <p className="text-2xl font-black text-emerald-950 leading-none">{tinyXpPercent.toFixed(1)}%</p>
+                                                </div>
+                                                <div className="w-full bg-emerald-200/50 h-2.5 mt-1 rounded-full overflow-hidden border border-emerald-200">
+                                                    <div className="bg-emerald-600 h-full transition-all duration-500 rounded-full" style={{ width: `${Math.min(tinyXpPercent, 100)}%` }}></div>
+                                                </div>
+                                                <p className="text-[10px] text-emerald-800 mt-2 font-medium">Of your total budget went to these expenses.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-xs">
+                                            <div className="flex justify-between items-center border-b border-slate-200 pb-3 mb-4">
+                                                <h3 className="font-serif font-bold text-lg text-slate-900 flex items-center gap-2">
+                                                    <i className="fas fa-list-ul text-slate-400"></i> Transactions in Range (₹{tinyXpMin} - ₹{tinyXpMax})
+                                                </h3>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="min-w-full text-xs text-left">
+                                                    <thead className="bg-slate-50 uppercase text-slate-500 border-b border-slate-200">
+                                                        <tr>
+                                                            <th className="p-3 font-bold tracking-wider">Date</th>
+                                                            <th className="p-3 font-bold tracking-wider">Description</th>
+                                                            <th className="p-3 font-bold tracking-wider">Category</th>
+                                                            <th className="p-3 font-bold tracking-wider">Bank</th>
+                                                            <th className="p-3 font-bold tracking-wider text-right">Amount (₹)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {tinyXpExpenses.length === 0 ? (
+                                                            <tr>
+                                                                <td colSpan="5" className="p-8 text-center text-slate-400 italic">No transactions found in this range for the selected month.</td>
+                                                            </tr>
+                                                        ) : (
+                                                            tinyXpExpenses.map(e => (
+                                                                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                                                                    <td className="p-3 font-medium text-slate-600 whitespace-nowrap">{e.date}</td>
+                                                                    <td className="p-3 font-bold text-slate-900">{e.description}</td>
+                                                                    <td className="p-3"><span className="bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-medium">{e.category || 'Personal'}</span></td>
+                                                                    <td className="p-3 uppercase font-semibold text-slate-400">{e.accountId || 'hdfc'}</td>
+                                                                    <td className="p-3 text-right font-bold text-slate-900 whitespace-nowrap">₹{Number(e.amount).toFixed(2)}</td>
+                                                                </tr>
+                                                            ))
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* TRACKING HABITS TAB */}
                             {}
