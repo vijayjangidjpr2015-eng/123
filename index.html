@@ -103,6 +103,24 @@
         .page-fade {
             animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
+
+        @keyframes buildGrow {
+            0% { transform: scaleY(0); opacity: 0; }
+            100% { transform: scaleY(1); opacity: 1; }
+        }
+        .skyline-building {
+            transform-origin: bottom center;
+            animation: buildGrow 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            position: relative;
+        }
+        .skyline-building.has-volume::before {
+            content: ''; position: absolute; top: -4px; left: 0; right: 0; height: 4px;
+            background: rgba(255, 255, 255, 0.25); transform: skewX(45deg); transform-origin: bottom left;
+        }
+        .skyline-building.has-volume::after {
+            content: ''; position: absolute; top: 0; bottom: 0; right: -4px; width: 4px;
+            background: rgba(0, 0, 0, 0.35); transform: skewY(45deg); transform-origin: top left;
+        }
     </style>
 </head>
 <body class="antialiased text-classic-800 font-sans bg-slate-100/80 selection:bg-slate-800 selection:text-white">
@@ -185,6 +203,7 @@
             if (fmt === 'MMM do, yyyy') return `${MMM} ${do_str}, ${yyyy}`;
             if (fmt === 'EEEE, MMMM do, yyyy') return `${EEEE}, ${MMMM} ${do_str}, ${yyyy}`;
             if (fmt === 'do') return do_str;
+            if (fmt === 'MMM d') return `${MMM} ${d.getDate()}`;
             return d.toString();
         };
 
@@ -254,6 +273,12 @@
         const App = () => {
             const [currentDate, setCurrentDate] = useState(new Date());
             const [selectedDate, setSelectedDate] = useState(new Date());
+            const [realTime, setRealTime] = useState(new Date());
+            
+            useEffect(() => {
+                const timer = setInterval(() => setRealTime(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
             
             const [tasks, setTasks] = useState([]);
             const [reminders, setReminders] = useState([]);
@@ -526,6 +551,19 @@
                 });
             }, [bills, excludedIds, removedKeysSet]);
 
+            // --- ABSOLUTE REAL DATE ANCHORS FOR REMINDERS ---
+            const realTodayDate = useMemo(() => startOfDay(new Date()), []);
+            const realTodayStr = useMemo(() => dateStr(realTodayDate), [realTodayDate]);
+            const realTomorrowDate = useMemo(() => {
+                const d = new Date(realTodayDate);
+                d.setDate(d.getDate() + 1);
+                return d;
+            }, [realTodayDate]);
+            const realTomorrowStr = useMemo(() => dateStr(realTomorrowDate), [realTomorrowDate]);
+            const currentMonthKeyReal = useMemo(() => format(realTodayDate, 'yyyy-MM'), [realTodayDate]);
+            const tomorrowMonthKeyReal = useMemo(() => format(realTomorrowDate, 'yyyy-MM'), [realTomorrowDate]);
+            // ------------------------------------------------
+
             const activeTasks = useMemo(() => {
                 return tasks.filter(t => !excludedIds.includes(t.id) && !removedKeysSet.has(t.id));
             }, [tasks, excludedIds, removedKeysSet]);
@@ -577,15 +615,34 @@
                 }).filter(Boolean);
             }, [activeTasks, selectedDate, selectedDateStr]);
 
-            const selectedDateReminders = useMemo(() => {
-                const targetDate = startOfDay(selectedDate);
-                return reminders.filter(reminder => {
+            const absoluteReminders = useMemo(() => {
+                const rList = [];
+                reminders.forEach(reminder => {
+                    if (!reminder.date) return;
                     const reminderStartDate = startOfDay(reminder.date);
-                    if (reminder.type === 'one-time') return reminder.date === selectedDateStr;
-                    if (reminder.type === 'recurring') return reminderStartDate <= targetDate;
-                    return false;
+                    
+                    if (reminder.type === 'one-time') {
+                        if (reminder.date === realTodayStr) {
+                            rList.push({ ...reminder, isForToday: true, isForTomorrow: false, reminderKey: `today-${reminder.id}` });
+                        }
+                        if (reminder.date === realTomorrowStr) {
+                            rList.push({ ...reminder, isForToday: false, isForTomorrow: true, reminderKey: `tomorrow-${reminder.id}` });
+                        }
+                    } else if (reminder.type === 'recurring') {
+                        if (reminderStartDate <= realTodayDate) {
+                            rList.push({ ...reminder, isForToday: true, isForTomorrow: true, reminderKey: `routine-${reminder.id}` });
+                        }
+                    }
                 });
-            }, [reminders, selectedDate, selectedDateStr]);
+
+                rList.sort((a, b) => {
+                    if (a.isForToday && !b.isForToday) return -1;
+                    if (!a.isForToday && b.isForToday) return 1;
+                    return 0;
+                });
+
+                return rList;
+            }, [reminders, realTodayStr, realTomorrowStr, realTodayDate]);
 
             const totalTasks = selectedDateTasks.length;
             const completedTasks = selectedDateTasks.filter(t => t.isCompletedOnDate).length;
@@ -648,6 +705,45 @@
             }, [monthlyBills, selectedDate, selectedDateStr]);
 
             const selectedDateBillTotal = selectedDateBills.reduce((sum, b) => sum + Number(b.amount), 0);
+
+            const budgetReminders = useMemo(() => {
+                const results = [];
+                
+                activeBills.forEach(bill => {
+                    if (!bill.date) return;
+                    
+                    let isDueToday = false;
+                    let isDueTomorrow = false;
+                    
+                    if (bill.type === 'one-time') {
+                        if (bill.date === realTodayStr) isDueToday = true;
+                        if (bill.date === realTomorrowStr) isDueTomorrow = true;
+                    } else if (bill.type === 'recurring') {
+                        const billDateObj = parseLocalDate(bill.date);
+                        const billDay = billDateObj.getDate();
+                        
+                        const realTodayDay = realTodayDate.getDate();
+                        const realTomorrowDay = realTomorrowDate.getDate();
+
+                        const billStart = startOfDay(bill.date);
+                        
+                        if (billStart <= realTodayDate && billDay === realTodayDay) isDueToday = true;
+                        if (billStart <= realTomorrowDate && billDay === realTomorrowDay) isDueTomorrow = true;
+                    }
+
+                    if (isDueToday) {
+                        const isPaid = bill.paidMonths ? bill.paidMonths.includes(currentMonthKeyReal) : false;
+                        results.push({ ...bill, isDueToday: true, isDueTomorrow: false, isPaid, targetMonth: currentMonthKeyReal, reminderKey: `today-${bill.id}` });
+                    }
+                    
+                    if (isDueTomorrow) {
+                        const isPaid = bill.paidMonths ? bill.paidMonths.includes(tomorrowMonthKeyReal) : false;
+                        results.push({ ...bill, isDueToday: false, isDueTomorrow: true, isPaid, targetMonth: tomorrowMonthKeyReal, reminderKey: `tomorrow-${bill.id}` });
+                    }
+                });
+
+                return results;
+            }, [activeBills, realTodayStr, realTomorrowStr, realTodayDate, realTomorrowDate, currentMonthKeyReal, tomorrowMonthKeyReal]);
 
             const accountSummaries = useMemo(() => {
                 return accounts.map(acc => {
@@ -908,13 +1004,14 @@
                 setIsEditBillModalOpen(false);
             };
 
-            const toggleBillPayment = (billId) => {
+            const toggleBillPayment = (billId, specificMonthKey) => {
                 playClickSound();
+                const targetMonth = specificMonthKey || monthKey;
                 setBills(bills.map(bill => {
                     if (bill.id === billId) {
                         const paidMonths = bill.paidMonths || [];
-                        const isCurrentlyPaid = paidMonths.includes(monthKey);
-                        return { ...bill, paidMonths: isCurrentlyPaid ? paidMonths.filter(m => m !== monthKey) : [...paidMonths, monthKey] };
+                        const isCurrentlyPaid = paidMonths.includes(targetMonth);
+                        return { ...bill, paidMonths: isCurrentlyPaid ? paidMonths.filter(m => m !== targetMonth) : [...paidMonths, targetMonth] };
                     }
                     return bill;
                 }));
@@ -1124,68 +1221,107 @@
                 </div>
             ));
 
+            const monthStartTarget = startOfMonth(selectedDate);
+            const monthEndTarget = endOfMonth(monthStartTarget);
+            const daysInMonthList = eachDayOfInterval({ start: monthStartTarget, end: monthEndTarget });
+            
+            let maxDailySpend = 0;
+            const dailySpendData = daysInMonthList.map(day => {
+                const dStr = dateStr(day);
+                const dayExpenses = activeExpenses.filter(e => e.date === dStr);
+                const dayExp = dayExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+                if (dayExp > maxDailySpend) maxDailySpend = dayExp;
+                
+                // Find the single largest transaction for this day to label on the chart
+                let largestExpense = null;
+                if (dayExpenses.length > 0) {
+                    largestExpense = dayExpenses.reduce((max, e) => Number(e.amount) > Number(max.amount) ? e : max, dayExpenses[0]);
+                }
+                
+                return { day, dStr, dayExp, dayNum: day.getDate(), largestExpense };
+            });
+
+            // Identify the Top 3 spending days of the month for the annotations
+            const top3DatesStr = [...dailySpendData]
+                .filter(d => d.dayExp > 0)
+                .sort((a, b) => b.dayExp - a.dayExp)
+                .slice(0, 3)
+                .map(d => d.dStr);
+
             return (
                 <div className="min-h-screen py-4 md:py-8 px-2 sm:px-4 md:px-8 flex justify-center">
                     <div className="w-full max-w-6xl classic-sheet p-4 sm:p-6 md:p-10 rounded-2xl border border-slate-200/80 relative overflow-hidden" onClick={() => initAudio()}>
                         
-                        {/* Top Header */}
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 border-b border-slate-200 pb-5">
-                            <div>
-                                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 tracking-tight font-serif">
-                                    Personal Journal & Ledger
-                                </h1>
-                                <p className="text-xs sm:text-sm text-slate-500 font-sans mt-1">
-                                    Selected Date: <span className="font-semibold text-slate-900">{format(selectedDate, 'EEEE, MMMM do, yyyy')}</span>
-                                </p>
-                            </div>
-                            
-                            <div className="flex items-center space-x-3 self-end sm:self-auto">
+                        {/* Top Header - Actions */}
+                        <div className="flex justify-end items-center gap-4 mb-8">
+                            <div className="flex items-center space-x-3">
+                                {!isSameDay(selectedDate, new Date()) && (
+                                    <div className="bg-amber-100/80 text-amber-900 border border-amber-200/60 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs animate-fadeIn">
+                                        <i className="fas fa-calendar-day"></i> Viewing: {format(selectedDate, 'MMM d, yyyy')}
+                                    </div>
+                                )}
+
                                 {isSyncing ? (
-                                    <span className="text-xs text-slate-500 italic"><i className="fas fa-spinner fa-spin mr-1"></i> Syncing...</span>
+                                    <span className="text-xs text-slate-500 italic px-3 py-2"><i className="fas fa-spinner fa-spin mr-1"></i> Syncing...</span>
                                 ) : (
                                     <button 
                                         onClick={triggerFetchBankAlerts}
                                         disabled={isTriggeringAlerts}
-                                        className="text-xs font-semibold text-slate-800 hover:text-slate-950 bg-slate-100 hover:bg-slate-200/80 px-3.5 py-2 rounded-lg transition-all border border-slate-300 shadow-2xs"
+                                        className="text-xs font-semibold text-slate-800 hover:text-slate-950 bg-white hover:bg-slate-50 px-4 py-2.5 rounded-xl transition-all border border-slate-200 shadow-sm flex items-center"
                                     >
-                                        <i className={`fas fa-sync-alt mr-1.5 ${isTriggeringAlerts ? 'fa-spin' : ''}`}></i>
+                                        <i className={`fas fa-sync-alt mr-2 ${isTriggeringAlerts ? 'fa-spin text-amber-500' : 'text-slate-400'}`}></i>
                                         {isTriggeringAlerts ? 'Updating...' : 'Sync Data'}
                                     </button>
                                 )}
                             </div>
                         </div>
 
-                        {alertNotice && <p className="text-sm font-medium text-slate-800 mb-4 animate-pulse bg-slate-100 p-2.5 rounded-lg border border-slate-200">{alertNotice}</p>}
+                        {alertNotice && <p className="text-sm font-medium text-slate-800 mb-6 animate-pulse bg-slate-100 p-3 rounded-xl border border-slate-200">{alertNotice}</p>}
 
-                        {/* Navigation Tabs (Including Habits Tab) */}
-                        <div className="flex overflow-x-auto custom-scrollbar gap-2 w-full mb-6 border-b border-slate-200 pb-3 whitespace-nowrap">
-                            {[
-                                { id: 'expenses', label: 'Expenses', icon: 'fa-receipt' },
-                                { id: 'habits', label: 'Tracking Habits', icon: 'fa-fire' },
-                                { id: 'balance', label: 'Bank Balance', icon: 'fa-wallet' },
-                                { id: 'debtors', label: 'Debtors', icon: 'fa-hand-holding-usd' },
-                                { id: 'loans', label: 'Loans', icon: 'fa-university' },
-                                { id: 'stocks', label: 'Stock Portfolio', icon: 'fa-chart-line' },
-                                { id: 'budget', label: 'Budget Ledger', icon: 'fa-chart-pie' },
-                                { id: 'savings', label: 'Savings', icon: 'fa-piggy-bank' },
-                                { id: 'wedding', label: 'My Wedding', icon: 'fa-ring' },
-                                { id: 'goals', label: 'Goals', icon: 'fa-bullseye' },
-                                { id: 'data', label: 'Master Data', icon: 'fa-database' },
-                                { id: 'removed', label: 'Entry to Remove', icon: 'fa-trash-alt' }
-                            ].map(tab => (
-                                <button 
-                                    key={tab.id}
-                                    onClick={() => handleTabClick(tab.id)}
-                                    className={`
-                                        px-3.5 py-2 font-sans text-xs sm:text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 flex-shrink-0
-                                        ${activeTab === tab.id 
-                                            ? 'bg-slate-900 text-white shadow-md font-semibold' 
-                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'}
-                                    `}
-                                >
-                                    <i className={`fas ${tab.icon} text-xs ${activeTab === tab.id ? 'text-amber-400' : 'text-slate-500'}`}></i> {tab.label}
-                                </button>
-                            ))}
+                        {/* Navigation Tabs - Redesigned Dock */}
+                        <div className="relative mb-8 z-20">
+                            {/* Decorative Edge Fades for scroll indication */}
+                            <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none rounded-l-2xl"></div>
+                            <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none rounded-r-2xl"></div>
+
+                            <div className="bg-slate-100/60 backdrop-blur-xl border border-slate-200/80 p-1.5 rounded-2xl shadow-[inset_0_1px_4px_rgba(0,0,0,0.03)]">
+                                <div className="flex overflow-x-auto gap-1.5 w-full whitespace-nowrap scroll-smooth snap-x custom-scrollbar pb-1">
+                                    {[
+                                        { id: 'expenses', label: 'Expenses', icon: 'fa-receipt' },
+                                        { id: 'habits', label: 'Tracking Habits', icon: 'fa-fire' },
+                                        { id: 'balance', label: 'Bank Balance', icon: 'fa-wallet' },
+                                        { id: 'debtors', label: 'Debtors', icon: 'fa-hand-holding-usd' },
+                                        { id: 'loans', label: 'Loans', icon: 'fa-university' },
+                                        { id: 'stocks', label: 'Stock Portfolio', icon: 'fa-chart-line' },
+                                        { id: 'budget', label: 'Budget Ledger', icon: 'fa-chart-pie' },
+                                        { id: 'savings', label: 'Savings', icon: 'fa-piggy-bank' },
+                                        { id: 'wedding', label: 'My Wedding', icon: 'fa-ring' },
+                                        { id: 'goals', label: 'Goals', icon: 'fa-bullseye' },
+                                        { id: 'data', label: 'Master Data', icon: 'fa-database' },
+                                        { id: 'removed', label: 'Entry to Remove', icon: 'fa-trash-alt' }
+                                    ].map(tab => {
+                                        const isActive = activeTab === tab.id;
+                                        return (
+                                            <button 
+                                                key={tab.id}
+                                                onClick={() => handleTabClick(tab.id)}
+                                                className={`
+                                                    relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-sans text-sm font-semibold transition-all duration-300 ease-out flex-shrink-0 snap-center
+                                                    ${isActive 
+                                                        ? 'text-white shadow-md shadow-slate-900/10' 
+                                                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}
+                                                `}
+                                            >
+                                                {isActive && (
+                                                    <div className="absolute inset-0 bg-slate-900 rounded-xl -z-10 transition-all duration-300"></div>
+                                                )}
+                                                <i className={`fas ${tab.icon} ${isActive ? 'text-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.5)]' : 'text-slate-400'}`}></i> 
+                                                <span className="relative z-10">{tab.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
 
                         {/* Calendar Widget with Heatmap Sliders for Expenses & Budget */}
@@ -1290,19 +1426,80 @@
                                         </div>
                                     </div>
 
-                                    <div className="p-4 bg-slate-900 text-white rounded-xl shadow-md">
-                                        <h3 className="font-serif font-bold text-base mb-3 flex items-center gap-2 text-amber-400">
-                                            <i className="fas fa-layer-group"></i> Expense Categorization Overview
-                                        </h3>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                            {['Personal', 'Utilities & Subscriptions', 'Household & Supplies'].map(cat => {
-                                                const catExpenses = todayExpenses.filter(e => (e.category || 'Personal') === cat);
-                                                const catTotal = catExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+                                    <div className="p-5 bg-white text-slate-900 rounded-xl shadow-xs border border-slate-200 relative overflow-hidden">
+                                        <div className="absolute -top-32 -right-32 w-72 h-72 bg-amber-100/60 blur-3xl rounded-full pointer-events-none"></div>
+                                        <div className="absolute -bottom-32 -left-32 w-72 h-72 bg-indigo-100/60 blur-3xl rounded-full pointer-events-none"></div>
+                                        
+                                        <div className="relative z-10 flex justify-between items-end mb-6 border-b border-slate-100 pb-3">
+                                            <h3 className="font-serif font-bold text-lg flex items-center gap-2 text-slate-900">
+                                                <i className="fas fa-city text-indigo-600"></i> Monthly Spend Skyline
+                                            </h3>
+                                            <span className="text-xs text-slate-500 font-medium hidden sm:block">Daily Trend for {format(selectedDate, 'MMMM yyyy')}</span>
+                                        </div>
+                                        
+                                        <div className="relative z-10 h-48 w-full flex items-end gap-2 overflow-x-auto custom-scrollbar pb-2 px-2 mt-2">
+                                            {dailySpendData.map((data, idx) => {
+                                                // Scaled to 75% to leave "sky" room for the highest expense annotations
+                                                const heightPercent = maxDailySpend > 0 ? (data.dayExp / maxDailySpend) * 75 : 0;
+                                                const isToday = data.dStr === realTodayStr;
+                                                const isSelected = data.dStr === selectedDateStr;
+                                                const hasData = data.dayExp > 0;
+                                                const isTop3 = top3DatesStr.includes(data.dStr);
+                                                
                                                 return (
-                                                    <div key={cat} className="p-3 bg-slate-800/90 rounded-lg border border-slate-700">
-                                                        <span className="text-xs font-semibold text-slate-300 block">{cat}</span>
-                                                        <span className="text-lg font-bold text-white mt-0.5 block">₹{catTotal.toFixed(2)}</span>
-                                                        <span className="text-[10px] text-slate-400">{catExpenses.length} logged today</span>
+                                                    <div 
+                                                        key={idx} 
+                                                        onClick={() => onDateClick(data.day)}
+                                                        className="flex flex-col justify-end items-center flex-1 min-w-[16px] h-full group relative cursor-pointer"
+                                                    >
+                                                        <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] py-1.5 px-2.5 rounded whitespace-nowrap z-40 pointer-events-none shadow-xl border border-slate-700 flex flex-col items-center">
+                                                            <span className="font-bold text-amber-400">{format(data.day, 'MMM d')}</span>
+                                                            <span>₹{data.dayExp.toFixed(2)}</span>
+                                                        </div>
+                                                        
+                                                        <div className="w-full flex-1 flex flex-col justify-end relative">
+                                                            {/* Highest Expense Annotation Flag */}
+                                                            {isTop3 && data.largestExpense && (
+                                                                <div 
+                                                                    className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-30"
+                                                                    style={{ bottom: `${Math.max(heightPercent, 2)}%` }}
+                                                                >
+                                                                    <div className="bg-white/95 border border-slate-200 shadow-sm rounded p-1 text-[9px] leading-tight whitespace-nowrap text-center mb-0.5">
+                                                                        <span className="block font-bold text-slate-800 truncate max-w-[60px]" title={data.largestExpense.description}>
+                                                                            {data.largestExpense.description}
+                                                                        </span>
+                                                                        <span className="block text-rose-600 font-bold">
+                                                                            ₹{Number(data.largestExpense.amount).toFixed(0)}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="w-[1px] h-2 bg-slate-400"></div>
+                                                                </div>
+                                                            )}
+
+                                                            <div 
+                                                                className={`w-full skyline-building transition-colors duration-300 border-t border-r border-slate-200/50
+                                                                    ${hasData ? 'has-volume' : ''} 
+                                                                    ${isSelected ? 'bg-amber-300 z-20 shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 
+                                                                      hasData ? 'bg-indigo-400 hover:bg-indigo-300 z-10' : 'bg-slate-100 hover:bg-slate-200'}
+                                                                `}
+                                                                style={{ 
+                                                                    height: `${Math.max(heightPercent, 2)}%`,
+                                                                    animationDelay: `${idx * 15}ms`
+                                                                }}
+                                                            >
+                                                                {hasData && (
+                                                                    <div className="w-full h-full flex flex-col justify-evenly opacity-30">
+                                                                        <div className="w-full h-[1px] bg-white"></div>
+                                                                        <div className="w-full h-[1px] bg-white"></div>
+                                                                        <div className="w-full h-[1px] bg-white"></div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <span className={`text-[9px] mt-2 flex items-center justify-center font-bold ${isSelected ? 'text-amber-600 bg-amber-50 px-1 rounded' : isToday ? 'bg-slate-900 text-white px-1 rounded' : 'text-slate-400'}`}>
+                                                            {data.dayNum}
+                                                        </span>
                                                     </div>
                                                 );
                                             })}
@@ -1312,44 +1509,126 @@
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                         <div className="p-5 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col min-h-[320px]">
                                             <div className="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
-                                                <h3 className="font-serif font-bold text-lg text-slate-900"><i className="fas fa-tasks mr-2 text-slate-700"></i>Tasks</h3>
+                                                <h3 className="font-serif font-bold text-lg text-slate-900">
+                                                    <i className="fas fa-check-square mr-2 text-indigo-600"></i>Tasks
+                                                </h3>
                                                 <button onClick={() => setIsTaskModalOpen(true)} className="text-xs bg-slate-900 text-white px-2.5 py-1 rounded-md font-medium hover:bg-slate-800 transition-colors">+ Add</button>
                                             </div>
                                             <div className="space-y-2 flex-1">
-                                                {selectedDateTasks.length === 0 ? (
-                                                    <p className="text-sm text-slate-400 italic text-center py-8">No tasks logged for this day.</p>
-                                                ) : (
-                                                    selectedDateTasks.map(task => (
-                                                        <div key={task.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 group">
-                                                            <div className="flex items-center space-x-3 overflow-hidden">
-                                                                <input type="checkbox" className="drawn-checkbox" checked={task.isCompletedOnDate} onChange={() => toggleTaskCompletion(task.id, task.type)} />
-                                                                <span className={`text-sm ${task.isCompletedOnDate ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</span>
+                                                {habits.map(habit => {
+                                                    const isDone = habitLogs[habit.id] ? !!habitLogs[habit.id][selectedDateStr] : false;
+                                                    return (
+                                                        <div key={`task-habit-${habit.id}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 group bg-indigo-50/40 mb-1">
+                                                            <div className="flex items-center space-x-3 overflow-hidden w-full">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    className="drawn-checkbox flex-shrink-0" 
+                                                                    checked={isDone} 
+                                                                    onChange={() => toggleHabitCompletion(habit.id, selectedDateStr)} 
+                                                                />
+                                                                <div className="overflow-hidden flex-1">
+                                                                    <span className={`text-sm block font-semibold truncate ${isDone ? 'line-through text-slate-400' : 'text-slate-800'}`}>{habit.title}</span>
+                                                                    <span className="text-[10px] text-indigo-600 font-bold uppercase block truncate">Habit • {habit.category}</span>
+                                                                </div>
                                                             </div>
-                                                            <button onClick={() => deleteTask(task.id)} className="text-slate-300 hover:text-rose-600 text-xs opacity-0 group-hover:opacity-100">✕</button>
                                                         </div>
-                                                    ))
+                                                    );
+                                                })}
+                                                
+                                                {selectedDateTasks.map(task => (
+                                                    <div key={`task-${task.id}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 group">
+                                                        <div className="flex items-center space-x-3 overflow-hidden w-full">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="drawn-checkbox flex-shrink-0" 
+                                                                checked={task.isCompletedOnDate} 
+                                                                onChange={() => toggleTaskCompletion(task.id, task.type)} 
+                                                            />
+                                                            <div className="overflow-hidden flex-1">
+                                                                <span className={`text-sm block font-semibold truncate ${task.isCompletedOnDate ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</span>
+                                                                <span className="text-[10px] text-slate-500 block uppercase truncate">Task • {task.type}</span>
+                                                            </div>
+                                                        </div>
+                                                        <button onClick={() => deleteTask(task.id)} className="text-slate-300 hover:text-rose-600 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0 ml-2">✕</button>
+                                                    </div>
+                                                ))}
+
+                                                {habits.length === 0 && selectedDateTasks.length === 0 && (
+                                                    <p className="text-sm text-slate-400 italic text-center py-8">No tasks pinned.</p>
                                                 )}
                                             </div>
                                         </div>
 
                                         <div className="p-5 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col min-h-[320px]">
                                             <div className="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
-                                                <h3 className="font-serif font-bold text-lg text-slate-900"><i className="fas fa-bell mr-2 text-amber-600"></i>Reminders</h3>
+                                                <h3 className="font-serif font-bold text-lg text-slate-900">
+                                                    <i className="fas fa-bell mr-2 text-amber-600"></i>
+                                                    Reminders
+                                                </h3>
                                                 <button onClick={() => setIsReminderModalOpen(true)} className="text-xs bg-slate-900 text-white px-2.5 py-1 rounded-md font-medium hover:bg-slate-800 transition-colors">+ Add</button>
                                             </div>
-                                            <div className="space-y-2 flex-1">
-                                                {selectedDateReminders.length === 0 ? (
-                                                    <p className="text-sm text-slate-400 italic text-center py-8">No reminders pinned.</p>
-                                                ) : (
-                                                    selectedDateReminders.map(reminder => (
-                                                        <div key={reminder.id} className="flex items-start justify-between p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 group">
-                                                            <div className="flex items-start space-x-2">
-                                                                <span className="text-amber-600 text-xs mt-1">•</span>
-                                                                <span className="text-sm text-slate-800">{reminder.text}</span>
+                                            <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-1">
+                                                {/* Today's Budget Reminders */}
+                                                {budgetReminders.filter(b => b.isDueToday).length > 0 && (
+                                                    <div className="space-y-1">
+                                                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 px-1">Due Today ({format(realTodayDate, 'MMM d')})</h4>
+                                                        {budgetReminders.filter(b => b.isDueToday).map(bill => (
+                                                            <div key={bill.reminderKey} className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-white shadow-2xs group">
+                                                                <div className="flex items-start space-x-2 w-full">
+                                                                    <input type="checkbox" className="drawn-checkbox mt-0.5" checked={bill.isPaid} onChange={() => toggleBillPayment(bill.id, bill.targetMonth)} />
+                                                                    <div className="overflow-hidden flex-1">
+                                                                        <span className={`text-sm block font-bold truncate ${bill.isPaid ? 'line-through text-slate-400' : 'text-slate-800'}`}>{bill.title}</span>
+                                                                        <span className="text-[10px] text-slate-500 block truncate">Budget Payment • ₹{bill.amount.toFixed(2)}</span>
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                            <button onClick={() => deleteReminder(reminder.id)} className="text-slate-300 hover:text-rose-600 text-xs opacity-0 group-hover:opacity-100">✕</button>
-                                                        </div>
-                                                    ))
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Tomorrow's Budget Reminders */}
+                                                {budgetReminders.filter(b => b.isDueTomorrow).length > 0 && (
+                                                    <div className="space-y-1 mt-2">
+                                                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 px-1">Due Tomorrow ({format(realTomorrowDate, 'MMM d')})</h4>
+                                                        {budgetReminders.filter(b => b.isDueTomorrow).map(bill => (
+                                                            <div key={bill.reminderKey} className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50/80 group">
+                                                                <div className="flex items-start space-x-2 w-full">
+                                                                    <input type="checkbox" className="drawn-checkbox mt-0.5" checked={bill.isPaid} onChange={() => toggleBillPayment(bill.id, bill.targetMonth)} />
+                                                                    <div className="overflow-hidden flex-1">
+                                                                        <span className={`text-sm block font-bold truncate ${bill.isPaid ? 'line-through text-slate-400' : 'text-slate-800'}`}>{bill.title}</span>
+                                                                        <span className="text-[10px] text-slate-500 block truncate">Budget Payment • ₹{bill.amount.toFixed(2)}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Custom Reminders */}
+                                                {absoluteReminders.length > 0 && (
+                                                    <div className="space-y-1 mt-2">
+                                                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 px-1">Custom Notes</h4>
+                                                        {absoluteReminders.map(reminder => (
+                                                            <div key={reminder.reminderKey} className="flex items-start justify-between p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 group">
+                                                                <div className="flex items-start space-x-2 w-full">
+                                                                    <span className="text-amber-600 text-xs mt-1 flex-shrink-0">•</span>
+                                                                    <div className="overflow-hidden flex-1">
+                                                                        <span className="text-sm text-slate-800 flex items-center gap-2 flex-wrap">
+                                                                            {reminder.text}
+                                                                            {reminder.isForTomorrow && !reminder.isForToday && (
+                                                                                <span className="text-[9px] uppercase font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded whitespace-nowrap">Tomorrow</span>
+                                                                            )}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <button onClick={() => deleteReminder(reminder.id)} className="text-slate-300 hover:text-rose-600 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0 ml-2">✕</button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {budgetReminders.length === 0 && absoluteReminders.length === 0 && (
+                                                    <p className="text-sm text-slate-400 italic text-center py-8">No reminders pinned.</p>
                                                 )}
                                             </div>
                                         </div>
