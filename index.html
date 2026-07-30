@@ -414,12 +414,12 @@
                         user = cred.user;
                     }
                     
-                    const userId = user.uid;
-                        const appId = typeof __app_id !== 'undefined' ? __app_id : 'classic-ledger';
-                        const docRef = window.firebaseDoc(window.firebaseDB, 'artifacts', appId, 'users', userId, 'data', 'state');
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'classic-ledger';
+                    // Changed to a shared public path so all devices read the exact same document
+                    const docRef = window.firebaseDoc(window.firebaseDB, 'artifacts', appId, 'public', 'data', 'shared_ledger', 'state');
                         
-                        // Listen in real-time to Firestore doc changes
-                        unsubscribe = window.firebaseOnSnapshot(docRef, (docSnap) => {
+                    // Listen in real-time to Firestore doc changes
+                    unsubscribe = window.firebaseOnSnapshot(docRef, (docSnap) => {
                             if (docSnap.exists()) {
                                 const data = docSnap.data();
                                 if (data.tasks) setTasks(data.tasks);
@@ -483,9 +483,9 @@
                 // Prevent saving default empty state back to DB before the real data is fetched
                 if (!hasLoadedFromDB || !window.firebaseDB || !window.firebaseAuth?.currentUser) return;
                 
-                const userId = window.firebaseAuth.currentUser.uid;
                 const appId = typeof __app_id !== 'undefined' ? __app_id : 'classic-ledger';
-                const docRef = window.firebaseDoc(window.firebaseDB, 'artifacts', appId, 'users', userId, 'data', 'state');
+                // Changed to a shared public path so all devices write to the exact same document
+                const docRef = window.firebaseDoc(window.firebaseDB, 'artifacts', appId, 'public', 'data', 'shared_ledger', 'state');
                 
                 const saveData = {
                     tasks, reminders, expenses, budgetMap, bills, goals, accounts, debtors, excludedIds,
