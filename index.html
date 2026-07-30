@@ -67,7 +67,7 @@
         
         body { 
             overscroll-behavior-y: none; 
-            background-color: #F3F4F6;
+            background-color: transparent;
         }
 
         .classic-sheet {
@@ -121,9 +121,143 @@
             content: ''; position: absolute; top: 0; bottom: 0; right: -4px; width: 4px;
             background: rgba(0, 0, 0, 0.35); transform: skewY(45deg); transform-origin: top left;
         }
+
+        .autumn-background {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: linear-gradient(rgba(241, 245, 249, 0.75), rgba(241, 245, 249, 0.85)), url('https://images.unsplash.com/photo-1507371341162-763b5e419408?ixlib=rb-4.0.3&auto=format&fit=crop&w=2560&q=80');
+            background-size: cover;
+            background-position: center;
+            z-index: -2;
+        }
+        .leaves-container {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            overflow: hidden;
+        }
+        .leaf {
+            position: absolute;
+            top: -10%;
+            width: 20px;
+            height: 20px;
+            background-color: #fbbf24;
+            border-radius: 0 70% 0 70%;
+            opacity: 0.8;
+            box-shadow: inset 2px 2px 4px rgba(255,255,255,0.2), 1px 1px 3px rgba(0,0,0,0.1);
+            animation: fall linear infinite, sway 2.5s ease-in-out infinite alternate;
+        }
+        .leaf:nth-child(even) { background-color: #f59e0b; width: 16px; height: 16px; }
+        .leaf:nth-child(3n) { background-color: #d97706; width: 24px; height: 24px; border-radius: 70% 0 70% 0; }
+        .leaf:nth-child(4n) { background-color: #eab308; }
+
+        @keyframes fall {
+            0% { top: -10%; }
+            100% { top: 110%; }
+        }
+        @keyframes sway {
+            0% { transform: translateX(-30px) rotate(-15deg); }
+            100% { transform: translateX(30px) rotate(60deg); }
+        }
+
+        /* Golden Click Animation Effect */
+        @keyframes goldenPulse {
+            0% { 
+                box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.9), inset 0 0 0 0 rgba(245, 158, 11, 0.3); 
+            }
+            25% {
+                box-shadow: 0 0 15px 5px rgba(245, 158, 11, 0.4), 0 0 0 12px rgba(245, 158, 11, 0.2);
+            }
+            100% { 
+                box-shadow: 0 0 30px 10px rgba(245, 158, 11, 0), 0 0 0 45px rgba(245, 158, 11, 0); 
+            }
+        }
+        .golden-click-fx {
+            animation: goldenPulse 2s cubic-bezier(0.1, 0.8, 0.3, 1) forwards !important;
+            position: relative;
+            z-index: 40;
+        }
+
+        body[data-theme="dark"] { color: #E2E8F0; }
+        body[data-theme="dark"] .autumn-background {
+            background-image: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.95)), url('https://images.unsplash.com/photo-1507371341162-763b5e419408?ixlib=rb-4.0.3&auto=format&fit=crop&w=2560&q=80');
+        }
+        body[data-theme="dark"] .leaf { filter: brightness(0.7) drop-shadow(0 0 4px rgba(251, 191, 36, 0.2)); }
+        
+        body[data-theme="dark"] .classic-sheet { background-color: #0F172A; border-color: #1E293B; box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.8); }
+        body[data-theme="dark"] .bg-white { background-color: #1E293B !important; }
+        body[data-theme="dark"] .bg-slate-50 { background-color: #0F172A !important; }
+        body[data-theme="dark"] .bg-slate-100 { background-color: #1E293B !important; }
+        body[data-theme="dark"] .bg-slate-200 { background-color: #334155 !important; }
+        
+        /* Main Accents */
+        body[data-theme="dark"] .bg-slate-900 { background-color: #4F46E5 !important; color: #FFFFFF !important; border-color: #4338CA !important; }
+        body[data-theme="dark"] .text-slate-900, body[data-theme="dark"] .text-slate-800 { color: #F8FAFC !important; }
+        body[data-theme="dark"] .text-slate-700, body[data-theme="dark"] .text-slate-600 { color: #CBD5E1 !important; }
+        body[data-theme="dark"] .text-slate-500 { color: #94A3B8 !important; }
+        body[data-theme="dark"] .text-slate-400 { color: #64748B !important; }
+        
+        body[data-theme="dark"] .border-slate-200, body[data-theme="dark"] .border-slate-100 { border-color: #334155 !important; }
+        body[data-theme="dark"] .border-slate-300 { border-color: #475569 !important; }
+        body[data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+        body[data-theme="dark"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #334155 !important; }
+        
+        /* Inputs & Form Elements */
+        body[data-theme="dark"] input, body[data-theme="dark"] select, body[data-theme="dark"] textarea { 
+            background-color: #0F172A !important; color: #F8FAFC !important; border-color: #334155 !important; 
+        }
+        body[data-theme="dark"] .drawn-checkbox { border-color: #475569; background-color: transparent !important; }
+        body[data-theme="dark"] .drawn-checkbox:checked { border-color: #4F46E5 !important; background-color: #4F46E5 !important; }
+        body[data-theme="dark"] .ring-slate-900 { --tw-ring-color: #4F46E5 !important; }
+        
+        /* Glassmorphism adjustments */
+        body[data-theme="dark"] .backdrop-blur-xl { background-color: rgba(15, 23, 42, 0.7) !important; border-color: #334155 !important; }
+        body[data-theme="dark"] .bg-gradient-to-r { background-image: linear-gradient(to right, #0F172A, transparent) !important; }
+        body[data-theme="dark"] .bg-gradient-to-l { background-image: linear-gradient(to left, #0F172A, transparent) !important; }
+        
+        /* Specific Color Accents (Emerald, Amber, Rose, etc.) */
+        body[data-theme="dark"] .bg-emerald-50, body[data-theme="dark"] .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.1) !important; border-color: rgba(16, 185, 129, 0.2) !important; }
+        body[data-theme="dark"] .text-emerald-900, body[data-theme="dark"] .text-emerald-800, body[data-theme="dark"] .text-emerald-700 { color: #34D399 !important; }
+        body[data-theme="dark"] .bg-amber-50, body[data-theme="dark"] .bg-amber-100 { background-color: rgba(245, 158, 11, 0.1) !important; border-color: rgba(245, 158, 11, 0.2) !important; }
+        body[data-theme="dark"] .text-amber-950, body[data-theme="dark"] .text-amber-900, body[data-theme="dark"] .text-amber-800 { color: #FBBF24 !important; }
+        body[data-theme="dark"] .bg-rose-50, body[data-theme="dark"] .bg-rose-100 { background-color: rgba(244, 63, 94, 0.1) !important; border-color: rgba(244, 63, 94, 0.2) !important; }
+        body[data-theme="dark"] .text-rose-950, body[data-theme="dark"] .text-rose-900, body[data-theme="dark"] .text-rose-800, body[data-theme="dark"] .text-rose-600 { color: #FB7185 !important; }
+        body[data-theme="dark"] .bg-indigo-50, body[data-theme="dark"] .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.1) !important; border-color: rgba(99, 102, 241, 0.2) !important; }
+        body[data-theme="dark"] .text-indigo-950, body[data-theme="dark"] .text-indigo-900, body[data-theme="dark"] .text-indigo-800, body[data-theme="dark"] .text-indigo-600 { color: #818CF8 !important; }
+        body[data-theme="dark"] .bg-teal-50, body[data-theme="dark"] .bg-teal-100 { background-color: rgba(20, 184, 166, 0.1) !important; border-color: rgba(20, 184, 166, 0.2) !important; }
+        body[data-theme="dark"] .text-teal-950, body[data-theme="dark"] .text-teal-900, body[data-theme="dark"] .text-teal-800 { color: #2DD4BF !important; }
+
+        /* The Theme Toggle Switch Component */
+        .theme-switch {
+            position: relative; width: 52px; height: 28px; background-color: #f1f5f9; border-radius: 999px;
+            cursor: pointer; transition: all 0.3s ease; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); border: 1px solid #cbd5e1;
+        }
+        body[data-theme="dark"] .theme-switch { background-color: #1e293b; border-color: #334155; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); }
+        .theme-switch-knob {
+            position: absolute; top: 1px; left: 1px; width: 24px; height: 24px; background-color: white; border-radius: 50%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex; align-items: center; justify-content: center; font-size: 12px;
+        }
+        body[data-theme="dark"] .theme-switch-knob { transform: translateX(24px); background-color: #0f172a; border: 1px solid #334155; }
     </style>
 </head>
-<body class="antialiased text-classic-800 font-sans bg-slate-100/80 selection:bg-slate-800 selection:text-white">
+<body class="antialiased text-classic-800 font-sans selection:bg-slate-800 selection:text-white bg-transparent">
+    
+    <div class="autumn-background"></div>
+    <div class="leaves-container">
+        <div class="leaf" style="left: 5%; animation-duration: 12s, 3s; animation-delay: 0s, 0s;"></div>
+        <div class="leaf" style="left: 15%; animation-duration: 18s, 4s; animation-delay: 2s, 1s;"></div>
+        <div class="leaf" style="left: 25%; animation-duration: 15s, 3.5s; animation-delay: 4s, 2s;"></div>
+        <div class="leaf" style="left: 35%; animation-duration: 20s, 4.5s; animation-delay: 1s, 0.5s;"></div>
+        <div class="leaf" style="left: 45%; animation-duration: 14s, 3s; animation-delay: 5s, 1.5s;"></div>
+        <div class="leaf" style="left: 55%; animation-duration: 17s, 5s; animation-delay: 3s, 2s;"></div>
+        <div class="leaf" style="left: 65%; animation-duration: 13s, 4s; animation-delay: 0.5s, 0s;"></div>
+        <div class="leaf" style="left: 75%; animation-duration: 19s, 3.5s; animation-delay: 6s, 1s;"></div>
+        <div class="leaf" style="left: 85%; animation-duration: 16s, 4.2s; animation-delay: 2.5s, 0.5s;"></div>
+        <div class="leaf" style="left: 95%; animation-duration: 14s, 3.8s; animation-delay: 7s, 2.5s;"></div>
+    </div>
+
     <div id="root"></div>
 
     <script type="module">
@@ -275,6 +409,21 @@
             const [selectedDate, setSelectedDate] = useState(new Date());
             const [realTime, setRealTime] = useState(new Date());
             
+            // Theme State initialized from localStorage
+            const [theme, setTheme] = useState(() => {
+                return localStorage.getItem('classicLedgerTheme') || 'light';
+            });
+
+            // Effect to automatically apply the data-theme attribute
+            useEffect(() => {
+                localStorage.setItem('classicLedgerTheme', theme);
+                if (theme === 'dark') {
+                    document.body.setAttribute('data-theme', 'dark');
+                } else {
+                    document.body.removeAttribute('data-theme');
+                }
+            }, [theme]);
+            
             useEffect(() => {
                 const timer = setInterval(() => setRealTime(new Date()), 1000);
                 return () => clearInterval(timer);
@@ -371,6 +520,32 @@
             const [hasLoadedFromDB, setHasLoadedFromDB] = useState(false);
 
             const synthRef = useRef(null);
+
+            // Global Golden Interaction Effect
+            useEffect(() => {
+                const handleGlobalClick = (e) => {
+                    // Target interactive elements (buttons, inputs, calendar days, checkboxes, etc.)
+                    const target = e.target.closest('button, input, select, .cursor-pointer');
+                    
+                    if (target && !target.classList.contains('classic-sheet')) {
+                        // Reset animation to allow rapid consecutive clicks
+                        target.classList.remove('golden-click-fx');
+                        void target.offsetWidth; // Trigger DOM reflow
+                        
+                        target.classList.add('golden-click-fx');
+                        
+                        // Clean up the class after the animation completes
+                        setTimeout(() => {
+                            if (target && target.classList) {
+                                target.classList.remove('golden-click-fx');
+                            }
+                        }, 2000);
+                    }
+                };
+                
+                document.addEventListener('mousedown', handleGlobalClick);
+                return () => document.removeEventListener('mousedown', handleGlobalClick);
+            }, []);
             
             const DAILY_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby-koILijAnRHIMZkEQI97_SUOmVIgK9RWBQmLzH6PxWV6bfWJdjiewg0K91duENAil/exec';
             const FETCH_ALERTS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx5yEPu9w-QRYLGhalxMsnBBF6UVq03hjgU84iXyZ2YCLRiQq6oqTrHXjC5Qw_ZZYCn/exec';
@@ -1256,7 +1431,7 @@
                     <div className="w-full max-w-6xl classic-sheet p-4 sm:p-6 md:p-10 rounded-2xl border border-slate-200/80 relative overflow-hidden" onClick={() => initAudio()}>
                         
                         {/* Top Header - Actions */}
-                        <div className="flex justify-end items-center gap-4 mb-8">
+                        <div className="flex justify-end items-center gap-4 mb-8 z-20 relative">
                             <div className="flex items-center space-x-3">
                                 {!isSameDay(selectedDate, new Date()) && (
                                     <div className="bg-amber-100/80 text-amber-900 border border-amber-200/60 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs animate-fadeIn">
@@ -1276,6 +1451,24 @@
                                         {isTriggeringAlerts ? 'Updating...' : 'Sync Data'}
                                     </button>
                                 )}
+                                
+                                {/* NEW Day/Night Theme Toggle Switch */}
+                                <div 
+                                    className="theme-switch ml-2" 
+                                    onClick={() => {
+                                        playClickSound();
+                                        setTheme(prev => prev === 'light' ? 'dark' : 'light');
+                                    }}
+                                    title="Toggle Day/Night Theme"
+                                >
+                                    <div className="theme-switch-knob">
+                                        {theme === 'light' ? (
+                                            <i className="fas fa-sun text-amber-500"></i>
+                                        ) : (
+                                            <i className="fas fa-moon text-indigo-400"></i>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
